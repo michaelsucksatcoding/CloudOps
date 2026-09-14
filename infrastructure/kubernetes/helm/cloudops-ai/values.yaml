@@ -1,0 +1,158 @@
+# Default values for cloudops-ai Helm chart.
+# Declare variables to be passed into templates.
+
+global:
+  environment: dev
+  awsRegion: us-east-1
+
+namespace:
+  create: true
+  name: cloudops-dev
+
+config:
+  logLevel: INFO
+  telemetryStreamName: cloudops-telemetry-stream
+  s3DataLakeBucket: cloudops-telemetry-lake
+  dynamodbHotTable: cloudops-telemetry-hot
+
+secrets:
+  databaseUrl: "postgresql://cloudops:cloudops_dev_pass@postgres.cloudops-dev.svc.cluster.local:5432/cloudops_db"
+  redisUrl: "redis://redis.cloudops-dev.svc.cluster.local:6379/0"
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: cloudops-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probes:
+    liveness:
+      path: /health/live
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+ml:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: cloudops-ml
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+eventProcessor:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: cloudops-event-processor
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9090
+    targetPort: 9090
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health/live
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+  path: /
+  pathType: Prefix
+
+networkPolicy:
+  enabled: true
+
+# Lightweight in-cluster monitoring for development and demonstrations.  Both
+# services are ClusterIP-only; access them with kubectl port-forward.
+monitoring:
+  enabled: true
+  namespace: cloudops-monitoring
+  prometheus:
+    enabled: true
+    image:
+      repository: prom/prometheus
+      tag: v2.54.1
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 9090
+    scrapeInterval: 15s
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  grafana:
+    enabled: true
+    image:
+      repository: grafana/grafana
+      tag: 11.2.0
+      pullPolicy: IfNotPresent
+    service:
+      type: ClusterIP
+      port: 3000
+    # This pre-existing Kubernetes Secret must contain the named key. Create
+    # it outside version control (or through your secret-management workflow).
+    adminPasswordSecret: cloudops-grafana-admin
+    adminPasswordKey: password
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi

@@ -1,0 +1,43 @@
+{{- if .Values.ml.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-ml
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  replicas: {{ .Values.ml.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ml
+  template:
+    metadata:
+      labels:
+        {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ml
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: ml
+          image: "{{ .Values.ml.image.repository }}:{{ .Values.ml.image.tag }}"
+          imagePullPolicy: {{ .Values.ml.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "cloudops-ai.fullname" . }}-config
+            - secretRef:
+                name: {{ include "cloudops-ai.fullname" . }}-secret
+          resources:
+            {{- toYaml .Values.ml.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+{{- end }}

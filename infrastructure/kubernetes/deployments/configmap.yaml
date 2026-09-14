@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudops-config
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: cloudops-config
+    app.kubernetes.io/part-of: cloudops-ai
+    environment: dev
+data:
+  ENVIRONMENT: "dev"
+  LOG_LEVEL: "INFO"
+  AWS_REGION: "us-east-1"
+  TELEMETRY_STREAM_NAME: "cloudops-telemetry-stream"
+  S3_DATA_LAKE_BUCKET: "cloudops-telemetry-lake"
+  DYNAMODB_HOT_TABLE: "cloudops-telemetry-hot"

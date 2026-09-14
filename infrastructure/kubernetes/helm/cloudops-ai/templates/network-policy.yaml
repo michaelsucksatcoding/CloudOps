@@ -1,0 +1,122 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-default-deny
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-api-netpol
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from: []
+      ports:
+        - protocol: TCP
+          port: {{ .Values.api.service.port }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "cloudops-ai.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: ml
+      ports:
+        - protocol: TCP
+          port: {{ .Values.ml.service.port }}
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-ml-netpol
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ml
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "cloudops-ai.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: api
+      ports:
+        - protocol: TCP
+          port: {{ .Values.ml.service.port }}
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-event-processor-netpol
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-processor
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: event-processor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+{{- end }}

@@ -1,0 +1,133 @@
+name: CI — CloudOps AI Quality & Security Gates
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-quality-and-tests:
+    name: Python Quality Gates & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Upgrade Pip and Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Ruff Lint Check
+        run: ruff check .
+
+      - name: Run Ruff Format Check
+        run: ruff format --check .
+
+      - name: Run Mypy Type Analysis
+        run: mypy services
+
+      - name: Run Pytest Test Suite with Coverage
+        run: pytest --cov=services --cov-report=term-missing
+
+      - name: Run Dependency Security Audit
+        run: pip-audit --desc
+
+  infrastructure-validation:
+    name: Infrastructure & Manifest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.0"
+
+      - name: Lint Helm Chart
+        run: helm lint infrastructure/kubernetes/helm/cloudops-ai
+
+      - name: Render Helm Templates Dry-Run
+        run: helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Check Terraform Formatting
+        run: terraform fmt -check -recursive infrastructure/terraform
+
+      - name: Validate Dev Terraform Environment
+        run: |
+          terraform -chdir=infrastructure/terraform/environments/dev init -backend=false
+          terraform -chdir=infrastructure/terraform/environments/dev validate
+
+  docker-build-and-scan:
+    name: Container Build & Image Security Scan
+    runs-on: ubuntu-latest
+    needs: [python-quality-and-tests, infrastructure-validation]
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: api
+          load: true
+          tags: cloudops-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build ML Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: ml
+          load: true
+          tags: cloudops-ml:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Event Processor Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: event-processor
+          load: true
+          tags: cloudops-event-processor:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan API Container Image for Vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cloudops-api:${{ github.sha }}
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"

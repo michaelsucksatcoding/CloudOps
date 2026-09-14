@@ -1,0 +1,20 @@
+{{- if .Values.eventProcessor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-event-processor
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-processor
+spec:
+  type: {{ .Values.eventProcessor.service.type }}
+  ports:
+    - port: {{ .Values.eventProcessor.service.port }}
+      targetPort: {{ .Values.eventProcessor.service.targetPort }}
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "cloudops-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: event-processor
+{{- end }}

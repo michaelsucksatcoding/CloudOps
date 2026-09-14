@@ -1,0 +1,9 @@
+{{- if and .Values.monitoring .Values.monitoring.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+{{- end }}

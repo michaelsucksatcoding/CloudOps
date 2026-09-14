@@ -1,0 +1,75 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: cloudops-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=dev
+      - DATABASE_URL=postgresql://cloudops:cloudops_dev_pass@postgres:5432/cloudops_db
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ml:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ml
+    container_name: cloudops-ml
+    environment:
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+
+  event-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: event-processor
+    container_name: cloudops-event-processor
+    environment:
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudops-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=cloudops
+      - POSTGRES_PASSWORD=cloudops_dev_pass
+      - POSTGRES_DB=cloudops_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudops -d cloudops_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloudops-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

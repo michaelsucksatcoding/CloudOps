@@ -1,0 +1,166 @@
+{{- if and .Values.monitoring .Values.monitoring.enabled .Values.monitoring.prometheus.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-prometheus-config
+  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: {{ .Values.monitoring.prometheus.scrapeInterval | default "15s" }}
+      evaluation_interval: {{ .Values.monitoring.prometheus.scrapeInterval | default "15s" }}
+
+    rule_files:
+      - /etc/prometheus/alerts.yml
+
+    scrape_configs:
+      - job_name: "cloudops-api"
+        metrics_path: "/metrics"
+        scrape_interval: 10s
+        static_configs:
+          - targets: ["{{ include "cloudops-ai.fullname" . }}-api.{{ .Values.namespace.name }}.svc.cluster.local:8000"]
+            labels:
+              app: "cloudops-api"
+              env: "{{ .Values.global.environment }}"
+
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
+
+  alerts.yml: |
+    groups:
+      - name: cloudops-ai-alerts
+        rules:
+          - alert: APIHighErrorRate
+            expr: (sum(rate(cloudops_http_requests_total{status_code=~"5.."}[2m])) / sum(rate(cloudops_http_requests_total[2m]))) * 100 > 5
+            for: 2m
+            labels:
+              severity: critical
+              component: api
+            annotations:
+              summary: "High API 5xx HTTP error rate detected"
+              description: "CloudOps API HTTP 5xx error rate has exceeded 5% over the last 2 minutes."
+
+          - alert: APIHighLatency
+            expr: histogram_quantile(0.95, sum(rate(cloudops_http_request_duration_seconds_bucket[5m])) by (le)) > 1.0
+            for: 5m
+            labels:
+              severity: warning
+              component: api
+            annotations:
+              summary: "High API P95 latency detected"
+              description: "CloudOps API P95 request latency exceeds 1.0s for 5 consecutive minutes."
+
+          - alert: ServiceDegraded
+            expr: cloudops_service_health_score < 0.70 and cloudops_service_health_score >= 0.40
+            for: 3m
+            labels:
+              severity: warning
+              component: ml
+            annotations:
+              summary: "Service health score degraded"
+              description: "Service {{ $labels.service }} composite health score dropped below 0.70."
+
+          - alert: ServiceCritical
+            expr: cloudops_service_health_score < 0.40
+            for: 1m
+            labels:
+              severity: critical
+              component: ml
+            annotations:
+              summary: "Service health score in critical state"
+              description: "Service {{ $labels.service }} composite health score dropped below 0.40, indicating severe degradation or outage."
+
+          - alert: TelemetryProcessingFailureSpike
+            expr: sum(rate(cloudops_telemetry_events_failed_total[2m])) > 5
+            for: 2m
+            labels:
+              severity: critical
+              component: event-processor
+            annotations:
+              summary: "High telemetry event processing failure rate"
+              description: "Telemetry ingestion pipeline is failing to validate or process more than 5 events per second."
+
+          - alert: HighAnomalyRate
+            expr: sum(rate(cloudops_anomalies_detected_total[5m])) * 60 > 10
+            for: 5m
+            labels:
+              severity: warning
+              component: ml
+            annotations:
+              summary: "Elevated anomaly detection rate"
+              description: "ML anomaly detection pipeline is flagging more than 10 anomalous events per minute."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-prometheus
+  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: "{{ .Values.monitoring.prometheus.image.repository }}:{{ .Values.monitoring.prometheus.image.tag }}"
+          imagePullPolicy: {{ .Values.monitoring.prometheus.image.pullPolicy }}
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time={{ .Values.monitoring.prometheus.retention | default "7d" }}"
+            - "--web.enable-lifecycle"
+          ports:
+            - name: http
+              containerPort: {{ .Values.monitoring.prometheus.service.port | default 9090 }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.monitoring.prometheus.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: storage
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "cloudops-ai.fullname" . }}-prometheus-config
+        - name: storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-prometheus
+  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  type: {{ .Values.monitoring.prometheus.service.type | default "ClusterIP" }}
+  ports:
+    - name: http
+      port: {{ .Values.monitoring.prometheus.service.port | default 9090 }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "cloudops-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+{{- end }}
