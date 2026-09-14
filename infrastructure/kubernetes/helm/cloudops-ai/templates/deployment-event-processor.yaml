@@ -1,0 +1,43 @@
+{{- if .Values.eventProcessor.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-event-processor
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-processor
+spec:
+  replicas: {{ .Values.eventProcessor.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: event-processor
+  template:
+    metadata:
+      labels:
+        {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: event-processor
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: event-processor
+          image: "{{ .Values.eventProcessor.image.repository }}:{{ .Values.eventProcessor.image.tag }}"
+          imagePullPolicy: {{ .Values.eventProcessor.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "cloudops-ai.fullname" . }}-config
+            - secretRef:
+                name: {{ include "cloudops-ai.fullname" . }}-secret
+          resources:
+            {{- toYaml .Values.eventProcessor.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+{{- end }}

@@ -1,0 +1,20 @@
+{{- if .Values.ml.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-ml
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  type: {{ .Values.ml.service.type }}
+  ports:
+    - port: {{ .Values.ml.service.port }}
+      targetPort: {{ .Values.ml.service.targetPort }}
+      protocol: TCP
+      name: internal
+  selector:
+    {{- include "cloudops-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+{{- end }}

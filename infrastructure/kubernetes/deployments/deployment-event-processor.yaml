@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudops-event-processor
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: cloudops-event-processor
+    app.kubernetes.io/part-of: cloudops-ai
+    app.kubernetes.io/component: event-processor
+    environment: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudops-event-processor
+  template:
+    metadata:
+      labels:
+        app: cloudops-event-processor
+        app.kubernetes.io/name: cloudops-event-processor
+        app.kubernetes.io/part-of: cloudops-ai
+        app.kubernetes.io/component: event-processor
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: event-processor
+          image: cloudops-event-processor:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: cloudops-config
+            - secretRef:
+                name: cloudops-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

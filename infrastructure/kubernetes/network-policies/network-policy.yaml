@@ -1,0 +1,116 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: default-deny-ingress
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-network-policy
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: api-network-policy
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: cloudops-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from: []
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cloudops-ml
+      ports:
+        - protocol: TCP
+          port: 8001
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-network-policy
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: ml-network-policy
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: cloudops-ml
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cloudops-api
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: event-processor-network-policy
+  namespace: cloudops-dev
+  labels:
+    app.kubernetes.io/name: event-processor-network-policy
+    app.kubernetes.io/part-of: cloudops-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: cloudops-event-processor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379

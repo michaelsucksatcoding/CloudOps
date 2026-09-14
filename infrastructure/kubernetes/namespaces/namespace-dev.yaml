@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudops-dev
+  labels:
+    app.kubernetes.io/part-of: cloudops-ai
+    environment: dev
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudops-monitoring
+  labels:
+    app.kubernetes.io/part-of: cloudops-ai
+    environment: dev
