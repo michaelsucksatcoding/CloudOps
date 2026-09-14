@@ -1,0 +1,145 @@
+{
+  "experiment_id": "local-simulator-evaluation-v1",
+  "executed_at": "2026-09-14T05:31:56.801241+00:00",
+  "environment": {
+    "execution": "local in-process FastAPI and in-memory event storage",
+    "python": "3.13.5",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "scikit_learn": "1.9.0"
+  },
+  "configuration": {
+    "experiment_id": "local-simulator-evaluation-v1",
+    "random_seed": 20260914,
+    "samples_per_scenario": 100,
+    "api_request_counts": [
+      50,
+      200,
+      500
+    ],
+    "endpoint": "/health/live",
+    "model": {
+      "algorithm": "IsolationForest",
+      "contamination": 0.02,
+      "random_state": 42,
+      "training_samples": 1000
+    }
+  },
+  "ml_scenarios": [
+    {
+      "scenario": "normal",
+      "simulated_incident": false,
+      "events": 100,
+      "detected_anomalies": 88,
+      "detection_rate": 0.88,
+      "mean_inference_latency_ms_per_event": 0.08187800005543977
+    },
+    {
+      "scenario": "cpu_spike",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 97,
+      "detection_rate": 0.97,
+      "mean_inference_latency_ms_per_event": 0.08430099987890571
+    },
+    {
+      "scenario": "memory_pressure",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 100,
+      "detection_rate": 1.0,
+      "mean_inference_latency_ms_per_event": 0.07537299999967217
+    },
+    {
+      "scenario": "latency_spike",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 63,
+      "detection_rate": 0.63,
+      "mean_inference_latency_ms_per_event": 0.07642999989911914
+    },
+    {
+      "scenario": "error_spike",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 69,
+      "detection_rate": 0.69,
+      "mean_inference_latency_ms_per_event": 0.08176799979992211
+    },
+    {
+      "scenario": "database_failure",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 92,
+      "detection_rate": 0.92,
+      "mean_inference_latency_ms_per_event": 0.07559899997431785
+    },
+    {
+      "scenario": "queue_backlog",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 89,
+      "detection_rate": 0.89,
+      "mean_inference_latency_ms_per_event": 0.0760349998017773
+    },
+    {
+      "scenario": "deployment_regression",
+      "simulated_incident": true,
+      "events": 100,
+      "detected_anomalies": 99,
+      "detection_rate": 0.99,
+      "mean_inference_latency_ms_per_event": 0.07710800040513277
+    }
+  ],
+  "ml_metrics": {
+    "true_positives": 609,
+    "false_positives": 88,
+    "true_negatives": 12,
+    "false_negatives": 91,
+    "precision": 0.8737446197991392,
+    "recall": 0.87,
+    "f1": 0.8718682891911238,
+    "false_positive_rate": 0.88,
+    "false_negative_rate": 0.13
+  },
+  "pipeline_latency": {
+    "samples": 100.0,
+    "mean_ms": 0.2825750008923933,
+    "p50_ms": 0.26379997143521905,
+    "p95_ms": 0.46499999007210135,
+    "p99_ms": 0.7442999631166458
+  },
+  "api_performance": [
+    {
+      "requests": 50.0,
+      "throughput_requests_per_second": 329.13727202103087,
+      "error_rate": 0.0,
+      "p50_latency_ms": 2.7859999681822956,
+      "p95_latency_ms": 3.7539000040851533,
+      "p99_latency_ms": 3.9569000364281237
+    },
+    {
+      "requests": 200.0,
+      "throughput_requests_per_second": 281.0766810898555,
+      "error_rate": 0.0,
+      "p50_latency_ms": 3.4210000303573906,
+      "p95_latency_ms": 4.795300017576665,
+      "p99_latency_ms": 6.014099984895438
+    },
+    {
+      "requests": 500.0,
+      "throughput_requests_per_second": 335.50996541777346,
+      "error_rate": 0.0,
+      "p50_latency_ms": 2.802100032567978,
+      "p95_latency_ms": 3.9983000024221838,
+      "p99_latency_ms": 4.702300007920712
+    }
+  ],
+  "observability": {
+    "metrics_emitted": {
+      "anomalies_detected": true,
+      "ml_inference": true,
+      "telemetry_processed": true
+    },
+    "grafana_or_prometheus_alert_evaluated": false
+  }
+}

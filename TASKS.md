@@ -49,8 +49,8 @@
       approved notification target are available (monitoring runbook documented)
 
 ## Phase 8 — Evaluation
-- [ ] Detection accuracy
-- [ ] Detection latency
-- [ ] API latency
+- [x] Local simulator-ground-truth detection evaluation
+- [x] Local ML inference and in-memory pipeline latency measurement
+- [x] Local sequential API latency and throughput measurement
 - [ ] Load testing
-- [ ] Resource utilization
+- [ ] Kubernetes resource utilization and HPA scale-out evaluation
