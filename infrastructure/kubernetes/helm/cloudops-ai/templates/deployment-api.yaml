@@ -21,6 +21,7 @@ spec:
         {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
+      serviceAccountName: {{ .Values.api.serviceAccount.name }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -38,6 +39,12 @@ spec:
                 name: {{ include "cloudops-ai.fullname" . }}-config
             - secretRef:
                 name: {{ include "cloudops-ai.fullname" . }}-secret
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.credentialsSecretName }}
+                  key: DATABASE_URL
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
           livenessProbe:

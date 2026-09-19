@@ -1,0 +1,185 @@
+{{- if .Values.awsLoadBalancerController.enabled }}
+{{- $webhookCN := printf "%s-aws-lb-controller-webhook" (include "cloudops-ai.fullname" .) }}
+{{- $ca := genCA $webhookCN 3650 }}
+{{- $cert := genSignedCert $webhookCN nil (list) 3650 $ca }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller-webhook
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+spec:
+  type: ClusterIP
+  ports:
+    - name: webhook-server
+      port: 443
+      targetPort: 9443
+      protocol: TCP
+  selector:
+    {{- include "cloudops-ai.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller-webhook-tls
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+  ca.crt: {{ $ca.Cert | b64enc }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.awsLoadBalancerController.serviceAccount.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+  {{- with .Values.awsLoadBalancerController.serviceAccount.iamRoleArn }}
+  annotations:
+    eks.amazonaws.com/role-arn: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete", "get", "list", "patch", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "patch", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses/status"]
+    verbs: ["patch", "update"]
+  - apiGroups: ["elbv2.k8s.aws"]
+    resources: ["ingressclassparams", "targetgroupbindings"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["elbv2.k8s.aws"]
+    resources: ["targetgroupbindings/status"]
+    verbs: ["patch", "update"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create", "get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.awsLoadBalancerController.serviceAccount.name }}
+    namespace: {{ .Values.namespace.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-aws-load-balancer-controller
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-load-balancer-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: aws-load-balancer-controller
+  template:
+    metadata:
+      labels:
+        {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: aws-load-balancer-controller
+    spec:
+      serviceAccountName: {{ .Values.awsLoadBalancerController.serviceAccount.name }}
+      securityContext:
+        fsGroup: 1337
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "cloudops-ai.fullname" . }}-aws-lb-controller-webhook-tls
+      containers:
+        - name: aws-load-balancer-controller
+          image: "{{ .Values.awsLoadBalancerController.image.repository }}:{{ .Values.awsLoadBalancerController.image.tag }}"
+          imagePullPolicy: {{ .Values.awsLoadBalancerController.image.pullPolicy }}
+          args:
+            - --ingress-class=alb
+            - --log-level={{ .Values.awsLoadBalancerController.logLevel }}
+            {{- if .Values.awsLoadBalancerController.clusterName }}
+            - --cluster-name={{ .Values.awsLoadBalancerController.clusterName }}
+            {{- end }}
+            {{- if .Values.awsLoadBalancerController.region }}
+            - --aws-region={{ .Values.awsLoadBalancerController.region }}
+            {{- end }}
+            {{- if .Values.awsLoadBalancerController.vpcId }}
+            - --aws-vpc-id={{ .Values.awsLoadBalancerController.vpcId }}
+            {{- end }}
+            - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            {{- toYaml .Values.awsLoadBalancerController.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 61779
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 61779
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+{{- end }}

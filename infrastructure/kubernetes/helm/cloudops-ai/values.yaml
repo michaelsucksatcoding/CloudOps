@@ -12,16 +12,23 @@ namespace:
 config:
   logLevel: INFO
   telemetryStreamName: cloudops-telemetry-stream
+  # "in_memory" for local testing, "kinesis" to publish events to Kinesis Data Streams.
+  telemetryProducer: in_memory
   s3DataLakeBucket: cloudops-telemetry-lake
   dynamodbHotTable: cloudops-telemetry-hot
 
 secrets:
-  databaseUrl: "postgresql://cloudops:cloudops_dev_pass@postgres.cloudops-dev.svc.cluster.local:5432/cloudops_db"
+  # DATABASE_URL is intentionally NOT committed here. The API receives it from
+  # the generated cloudops-postgres-credentials Secret (see the postgres section).
   redisUrl: "redis://redis.cloudops-dev.svc.cluster.local:6379/0"
 
 api:
   enabled: true
   replicaCount: 2
+  serviceAccount:
+    name: cloudops-api
+    # ARN of the IRSA role; leave empty to create the ServiceAccount without an annotation.
+    iamRoleArn: ""
   image:
     repository: cloudops-api
     tag: latest
@@ -75,9 +82,43 @@ ml:
       cpu: 500m
       memory: 512Mi
 
+# Development in-cluster PostgreSQL. The password is generated on first install
+# (see templates/postgres-secret.yaml) and stored only in the referenced
+# Kubernetes Secret; nothing sensitive is committed here. The Service name
+# matches the DNS name the application expects
+# (postgres.cloudops-dev.svc.cluster.local). The API image carries Alembic, so
+# after deploying run migrations separately (Alembic is not run at startup):
+#   kubectl exec -n cloudops-dev deploy/cloudops-ai-api -- alembic upgrade head
+postgres:
+  enabled: true
+  serviceName: postgres
+  user: cloudops
+  database: cloudops_db
+  port: 5432
+  credentialsSecretName: cloudops-postgres-credentials
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  storage:
+    # Leave storageClass empty to use the cluster's default storage class.
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 eventProcessor:
   enabled: true
   replicaCount: 1
+  serviceAccount:
+    name: cloudops-event-processor
+    # ARN of the IRSA role; leave empty to create the ServiceAccount without an annotation.
+    iamRoleArn: ""
   image:
     repository: cloudops-event-processor
     tag: latest
@@ -93,6 +134,34 @@ eventProcessor:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# AWS Load Balancer Controller required for the ALB ingress. RBAC/Deployment
+# run in-cluster via IRSA (no webhook, no cert-manager). The IRSA role ARN is
+# injected at deploy time via the eks.amazonaws.com/role-arn annotation;
+# clusterName/region are known dev defaults, vpcId must be set from the applied
+# VPC (terraform output "networking.vpc_id").
+awsLoadBalancerController:
+  enabled: true
+  image:
+    repository: public.ecr.aws/eks/aws-load-balancer-controller
+    tag: v2.8.2
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    name: aws-load-balancer-controller
+    # ARN of the cloudops-alb-controller-irsa-dev role; leave empty to create
+    # the ServiceAccount without an annotation.
+    iamRoleArn: ""
+  clusterName: cloudops-eks-dev
+  region: us-east-1
+  vpcId: ""
+  logLevel: info
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 ingress:
   enabled: true

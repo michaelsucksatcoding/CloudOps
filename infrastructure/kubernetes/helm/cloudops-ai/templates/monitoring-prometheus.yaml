@@ -62,7 +62,7 @@ data:
               component: ml
             annotations:
               summary: "Service health score degraded"
-              description: "Service {{ $labels.service }} composite health score dropped below 0.70."
+              description: "Service {{ "{{" }} $labels.service {{ "}}" }} composite health score dropped below 0.70."
 
           - alert: ServiceCritical
             expr: cloudops_service_health_score < 0.40
@@ -72,7 +72,7 @@ data:
               component: ml
             annotations:
               summary: "Service health score in critical state"
-              description: "Service {{ $labels.service }} composite health score dropped below 0.40, indicating severe degradation or outage."
+              description: "Service {{ "{{" }} $labels.service {{ "}}" }} composite health score dropped below 0.40, indicating severe degradation or outage."
 
           - alert: TelemetryProcessingFailureSpike
             expr: sum(rate(cloudops_telemetry_events_failed_total[2m])) > 5

@@ -122,6 +122,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build Lambda Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: lambda
+          load: true
+          tags: cloudops-event-processor-lambda:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan Lambda Container Image for Vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cloudops-event-processor-lambda:${{ github.sha }}
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
       - name: Scan API Container Image for Vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:

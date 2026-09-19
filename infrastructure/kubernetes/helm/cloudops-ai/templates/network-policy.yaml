@@ -119,4 +119,45 @@ spec:
           port: 5432
         - protocol: TCP
           port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudops-ai.fullname" . }}-postgres-netpol
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "cloudops-ai.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cloudops-ai.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "cloudops-ai.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: api
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgres.port }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "cloudops-ai.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: event-processor
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgres.port }}
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 {{- end }}

@@ -19,6 +19,7 @@ spec:
         {{- include "cloudops-ai.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: event-processor
     spec:
+      serviceAccountName: {{ .Values.eventProcessor.serviceAccount.name }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -32,6 +33,10 @@ spec:
                 name: {{ include "cloudops-ai.fullname" . }}-config
             - secretRef:
                 name: {{ include "cloudops-ai.fullname" . }}-secret
+          # The image CMD is a Lambda-style one-shot handler; keep the pod
+          # long-running so it can serve metrics and be reachable in-cluster
+          # while actual event processing happens via Kinesis → Lambda.
+          command: ["/bin/sh", "-c", "while true; do sleep 3600; done"]
           resources:
             {{- toYaml .Values.eventProcessor.resources | nindent 12 }}
           securityContext:

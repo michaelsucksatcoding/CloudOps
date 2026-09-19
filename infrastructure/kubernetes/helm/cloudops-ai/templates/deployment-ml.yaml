@@ -32,6 +32,9 @@ spec:
                 name: {{ include "cloudops-ai.fullname" . }}-config
             - secretRef:
                 name: {{ include "cloudops-ai.fullname" . }}-secret
+          # The image entrypoint is a one-shot evaluation script; run it
+          # periodically and keep the pod alive so the workload is long-running.
+          command: ["/bin/sh", "-c", "while true; do python -m services.ml.evaluate; sleep 3600; done"]
           resources:
             {{- toYaml .Values.ml.resources | nindent 12 }}
           securityContext:

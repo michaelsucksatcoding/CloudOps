@@ -37,6 +37,12 @@ variable "node_instance_types" {
   default     = ["t3.medium"]
 }
 
+variable "node_ami_type" {
+  description = "EKS worker node AMI type (e.g. AL2_x86_64, AL2023_x86_64_STANDARD, AL2023_x86_64_EXTENDED)"
+  type        = string
+  default     = "AL2_x86_64"
+}
+
 variable "desired_nodes" {
   description = "Desired number of worker nodes in node group"
   type        = number
@@ -53,4 +59,16 @@ variable "max_nodes" {
   description = "Maximum number of worker nodes in node group"
   type        = number
   default     = 4
+}
+
+variable "cluster_public_access_cidrs" {
+  description = "CIDR blocks allowed to reach the EKS public API endpoint"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "enabled_cluster_log_types" {
+  description = "EKS control plane log types to enable (api, audit, authenticator, controllerManager, scheduler)"
+  type        = list(string)
+  default     = []
 }

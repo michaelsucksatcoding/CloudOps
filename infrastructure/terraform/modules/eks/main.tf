@@ -68,7 +68,10 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.cluster.id]
     endpoint_private_access = true
     endpoint_public_access  = true
+    public_access_cidrs     = var.cluster_public_access_cidrs
   }
+
+  enabled_cluster_log_types = var.enabled_cluster_log_types
 
   depends_on = [
     aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
@@ -139,6 +142,69 @@ resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOn
   role       = aws_iam_role.node.name
 }
 
+resource "aws_iam_role_policy_attachment" "node_AmazonEBSCSIDriverPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.node.name
+}
+
+# -----------------------------------------------------------------------------
+# EBS CSI Driver Add-on (required for persistent volumes on EKS 1.30+)
+# The controller uses IRSA so it can assume a least-privilege role instead of
+# relying on instance metadata (default hop-limit blocks pod IMDS access).
+# NOTE: this add-on does not support `configuration_values` beyond
+# controller/node/proxy settings, so the role is attached through the add-on's
+# native `service_account_role_arn` (maps to the API's serviceAccountRoleArn).
+# -----------------------------------------------------------------------------
+resource "aws_iam_role" "ebs_csi" {
+  name = "${var.cluster_name}-ebs-csi-driver-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.oidc.arn
+        }
+        Condition = {
+          StringEquals = {
+            "${aws_iam_openid_connect_provider.oidc.url}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+            "${aws_iam_openid_connect_provider.oidc.url}:aud" = "sts.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.cluster_name}-ebs-csi-driver-role"
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi_AmazonEBSCSIDriverPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.ebs_csi.name
+}
+
+resource "aws_eks_addon" "ebs_csi_driver" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "aws-ebs-csi-driver"
+
+  service_account_role_arn = aws_iam_role.ebs_csi.arn
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_AmazonEBSCSIDriverPolicy,
+    aws_iam_role_policy_attachment.ebs_csi_AmazonEBSCSIDriverPolicy,
+  ]
+
+  tags = {
+    Name        = "${var.cluster_name}-ebs-csi-driver"
+    Environment = var.environment
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Managed Node Group in Private Subnets
 # -----------------------------------------------------------------------------
@@ -148,6 +214,7 @@ resource "aws_eks_node_group" "main" {
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = var.subnet_ids
   instance_types  = var.node_instance_types
+  ami_type        = var.node_ami_type
   capacity_type   = "ON_DEMAND"
 
   scaling_config {

@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml README.md ./
 COPY services/ ./services/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
@@ -32,6 +34,8 @@ RUN useradd -m -u 1000 appuser && \
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY services/ ./services/
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 COPY pyproject.toml README.md ./
 
 USER appuser
@@ -61,6 +65,19 @@ CMD ["python", "-m", "services.ml.evaluate"]
 FROM base-runner AS event-processor
 
 CMD ["python", "-m", "services.event_processor.handler"]
+
+# ==========================================
+# Stage 6: AWS Lambda Runtime Target
+# ==========================================
+FROM public.ecr.aws/lambda/python:3.12 AS lambda
+
+COPY pyproject.toml README.md ./
+COPY services/ ./services/
+
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir .
+
+CMD ["services.event_processor.handler.lambda_handler"]
 
 # Default stage when no target is specified
 FROM api AS final

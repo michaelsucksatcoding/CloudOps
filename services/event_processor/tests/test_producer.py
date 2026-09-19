@@ -2,8 +2,15 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
+from services.api.app.config import settings
 from services.api.app.schemas.telemetry import TelemetryEventCreate
-from services.event_processor.producer import InMemoryProducer, KinesisProducer
+from services.event_processor.producer import (
+    InMemoryProducer,
+    KinesisProducer,
+    get_stream_producer,
+)
 
 
 def _sample_event() -> TelemetryEventCreate:
@@ -48,3 +55,21 @@ def test_kinesis_producer_initialization() -> None:
     kp = KinesisProducer(stream_name="test-stream", region="us-east-1")
     assert kp.stream_name == "test-stream"
     assert kp.region == "us-east-1"
+
+
+def test_get_stream_producer_defaults_to_in_memory() -> None:
+    """Verify the factory returns the in-memory producer by default."""
+    producer = get_stream_producer()
+    assert isinstance(producer, InMemoryProducer)
+
+
+def test_get_stream_producer_returns_kinesis_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the factory returns KinesisProducer when explicitly configured."""
+    monkeypatch.setattr(settings, "telemetry_producer", "kinesis")
+    producer = get_stream_producer()
+    assert isinstance(producer, KinesisProducer)
+
+    monkeypatch.setattr(settings, "telemetry_producer", "in_memory")
+    assert isinstance(get_stream_producer(), InMemoryProducer)

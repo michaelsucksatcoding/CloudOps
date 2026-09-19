@@ -139,7 +139,20 @@ class KinesisProducer:
 # Global in-memory producer for local runs
 _default_producer = InMemoryProducer()
 
+# Lazily-created Kinesis producer for deployments that explicitly opt in.
+_kinesis_producer: KinesisProducer | None = None
+
 
 def get_stream_producer() -> TelemetryProducer:
-    """Dependency / factory provider for TelemetryProducer."""
+    """Dependency / factory provider for TelemetryProducer.
+
+    Returns an in-memory producer by default (safe for local testing and
+    offline execution). When ``TELEMETRY_PRODUCER=kinesis`` is set explicitly,
+    returns the Kinesis Data Streams producer backed by the configured stream.
+    """
+    if settings.telemetry_producer.lower() == "kinesis":
+        global _kinesis_producer
+        if _kinesis_producer is None:
+            _kinesis_producer = KinesisProducer()
+        return _kinesis_producer
     return _default_producer

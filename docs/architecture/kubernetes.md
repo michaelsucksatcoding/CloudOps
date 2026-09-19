@@ -103,3 +103,27 @@ helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai --values in
 # Install / Upgrade
 helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai -n cloudops-dev --create-namespace
 ```
+
+---
+
+## 7. Verified Dev Deployment (2026-09-18)
+
+The design above was deployed to the `cloudops-eks-dev` cluster and verified
+on 2026-09-18:
+
+- Cluster, node group, and the `cloudops-dev` / `cloudops-monitoring`
+  namespaces running.
+- API running with 2 pods; PostgreSQL running with the Alembic migration
+  applied and PVC bound.
+- ALB provisioned via the Load Balancer Controller; both targets healthy;
+  `GET /health/live` and `GET /health/ready` returned HTTP 200 (readiness
+  confirmed database connectivity).
+- Prometheus and Grafana running in `cloudops-monitoring`; API metrics scraped;
+  Grafana Prometheus datasource and 3 dashboards provisioned; 6 alert rules
+  loaded (inactive during verification because no incident was active).
+- EBS CSI addon active.
+- Terraform validation/plan and Helm lint/template succeeded.
+
+Note: alert notification delivery was not validated (no Alertmanager is
+deployed), and the Kinesis → Lambda → DynamoDB/S3 event path is not live-verified
+(see the Kinesis limitation in the [README](../../README.md)).
