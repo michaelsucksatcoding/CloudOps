@@ -54,6 +54,20 @@ jobs:
         with:
           version: "v3.14.0"
 
+      - name: DIAGNOSTIC [temp] - Print OIDC claims (sub/aud)
+        id: diag-oidc-claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jwt = await core.getIDToken();
+            const payload = jwt.split('.')[1];
+            const claims = JSON.parse(
+              Buffer.from(payload, 'base64url').toString('utf-8')
+            );
+            console.log("DIAGNOSTIC aud = " + JSON.stringify(claims.aud));
+            console.log("DIAGNOSTIC sub = " + JSON.stringify(claims.sub));
+            core.setOutput('oidc_sub', JSON.stringify(claims.sub));
+
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
