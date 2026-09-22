@@ -103,3 +103,15 @@ variable "enabled_cluster_log_types" {
   type        = list(string)
   default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 }
+
+variable "github_deploy_role_arn" {
+  description = "IAM role ARN used by GitHub Actions CD to install/upgrade Helm releases in the EKS cluster. Creates a namespace-scoped EKS access entry with AmazonEKS_EditPolicy so the role can manage Kubernetes resources without cluster-admin privileges."
+  type        = string
+  default     = "arn:aws:iam::477170636125:role/cloudops-github-deploy-role"
+}
+
+variable "github_deploy_namespace" {
+  description = "Kubernetes namespace the GitHub deploy role is granted AmazonEKS_EditPolicy access to"
+  type        = string
+  default     = "cloudops-dev"
+}

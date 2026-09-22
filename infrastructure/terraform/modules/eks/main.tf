@@ -75,10 +75,6 @@ resource "aws_eks_cluster" "main" {
     public_access_cidrs     = var.cluster_public_access_cidrs
   }
 
-  access_config {
-    authentication_mode = var.authentication_mode
-  }
-
   enabled_cluster_log_types = var.enabled_cluster_log_types
 
   depends_on = [
@@ -90,6 +86,52 @@ resource "aws_eks_cluster" "main" {
     Name        = var.cluster_name
     Environment = var.environment
   }
+}
+
+# -----------------------------------------------------------------------------
+# Namespace-Scoped EKS Access Entry for the GitHub Deploy Role
+# -----------------------------------------------------------------------------
+# The GitHub Actions CD "cloudops-github-deploy-role" authenticates to the EKS
+# cluster via EKS Access Entries (authentication_mode = API_AND_CONFIG_MAP) but
+# holds no Kubernetes RBAC. As a result `helm install/upgrade` in the CD
+# pipeline fails with errors like:
+#   cannot list resource "secrets" in the namespace "cloudops-dev"
+#
+# These resources add the deploy role as an EKS access entry (STANDARD) and bind
+# AmazonEKS_EditPolicy scoped to a single namespace. AmazonEKS_EditPolicy grants
+# read/write on namespaced resources (Secrets, ConfigMaps, Deployments,
+# Services, Pods, Jobs) sufficient for Helm without assigning cluster-admin or
+# AdministratorAccess.
+#
+# Both resources are gated on github_deploy_role_arn != "" so environments that
+# do not deploy via GitHub Actions remain unaffected.
+resource "aws_eks_access_entry" "github_deploy" {
+  count = var.github_deploy_role_arn == "" ? 0 : 1
+
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_deploy_role_arn
+  type          = "STANDARD"
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_eks_access_policy_association" "github_deploy" {
+  count = var.github_deploy_role_arn == "" ? 0 : 1
+
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.github_deploy_role_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKS_EditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = [var.github_deploy_namespace]
+  }
+
+  depends_on = [
+    aws_eks_access_entry.github_deploy[0],
+  ]
 }
 
 # -----------------------------------------------------------------------------
