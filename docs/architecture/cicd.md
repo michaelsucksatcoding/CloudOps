@@ -136,7 +136,7 @@ The deployment role requires permissions only for ECR push, EKS cluster descript
 |---|---|---|
 | `AWS_ROLE_ARN` | ARN of the IAM Role assumed via OIDC | `arn:aws:iam::123456789012:role/cloudops-github-deploy-role` |
 | `AWS_REGION` | Target AWS Region | `us-east-1` |
-| `EKS_CLUSTER_NAME` | Name of the Amazon EKS cluster | `cloudops-dev-eks` |
+| `EKS_CLUSTER_NAME` | Name of the Amazon EKS cluster | `cloudops-eks-dev` |
 
 ---
 
