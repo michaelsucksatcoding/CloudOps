@@ -63,12 +63,20 @@ resource "aws_eks_cluster" "main" {
   role_arn = aws_iam_role.cluster.arn
   version  = var.kubernetes_version
 
+  access_config {
+    authentication_mode = var.authentication_mode
+  }
+
   vpc_config {
     subnet_ids              = var.control_plane_subnet_ids
     security_group_ids      = [aws_security_group.cluster.id]
     endpoint_private_access = true
     endpoint_public_access  = true
     public_access_cidrs     = var.cluster_public_access_cidrs
+  }
+
+  access_config {
+    authentication_mode = var.authentication_mode
   }
 
   enabled_cluster_log_types = var.enabled_cluster_log_types
