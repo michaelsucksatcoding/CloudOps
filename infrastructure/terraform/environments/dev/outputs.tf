@@ -49,16 +49,6 @@ output "dynamodb_hot_table_arn" {
   value       = module.dynamodb.table_arn
 }
 
-output "kinesis_stream_name" {
-  description = "Name of the Kinesis telemetry stream"
-  value       = module.kinesis.stream_name
-}
-
-output "kinesis_stream_arn" {
-  description = "ARN of the Kinesis telemetry stream"
-  value       = module.kinesis.stream_arn
-}
-
 output "s3_data_lake_bucket_name" {
   description = "Name of the S3 data-lake bucket"
   value       = module.s3.bucket_name
@@ -67,16 +57,6 @@ output "s3_data_lake_bucket_name" {
 output "s3_data_lake_bucket_arn" {
   description = "ARN of the S3 data-lake bucket"
   value       = module.s3.bucket_arn
-}
-
-output "lambda_function_name" {
-  description = "Name of the Lambda event-processor function"
-  value       = module.lambda.function_name
-}
-
-output "lambda_function_arn" {
-  description = "ARN of the Lambda event-processor function"
-  value       = module.lambda.function_arn
 }
 
 output "api_irsa_role_arn" {

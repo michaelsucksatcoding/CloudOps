@@ -17,7 +17,7 @@ module "ecr" {
   source = "../../modules/ecr"
 
   environment      = var.environment
-  repository_names = ["cloudops-api", "cloudops-ml", "cloudops-event-processor", "cloudops-event-processor-lambda"]
+  repository_names = ["cloudops-api", "cloudops-ml", "cloudops-event-processor"]
 }
 
 module "eks" {
@@ -46,30 +46,10 @@ module "dynamodb" {
   environment = var.environment
 }
 
-module "kinesis" {
-  source = "../../modules/kinesis"
-
-  environment = var.environment
-}
-
 module "s3" {
   source = "../../modules/s3"
 
   environment = var.environment
-}
-
-module "lambda" {
-  source = "../../modules/lambda"
-
-  environment         = var.environment
-  aws_region          = var.aws_region
-  image_uri           = "${module.ecr.repository_urls["cloudops-event-processor-lambda"]}:${var.lambda_image_tag}"
-  kinesis_stream_name = module.kinesis.stream_name
-  kinesis_stream_arn  = module.kinesis.stream_arn
-  dynamodb_table_name = module.dynamodb.table_name
-  dynamodb_table_arn  = module.dynamodb.table_arn
-  s3_bucket_name      = module.s3.bucket_name
-  s3_bucket_arn       = module.s3.bucket_arn
 }
 
 module "irsa" {
@@ -79,7 +59,6 @@ module "irsa" {
   namespace          = var.workload_namespace
   oidc_provider_arn  = module.eks.oidc_provider_arn
   oidc_issuer        = replace(module.eks.oidc_provider_url, "https://", "")
-  kinesis_stream_arn = module.kinesis.stream_arn
   dynamodb_table_arn = module.dynamodb.table_arn
   s3_bucket_arn      = module.s3.bucket_arn
 }

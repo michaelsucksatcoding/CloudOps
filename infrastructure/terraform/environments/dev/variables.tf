@@ -76,12 +76,6 @@ variable "max_nodes" {
   default     = 4
 }
 
-variable "lambda_image_tag" {
-  description = "Container image tag for the Lambda event-processor function"
-  type        = string
-  default     = "latest"
-}
-
 variable "workload_namespace" {
   description = "Kubernetes namespace hosting the CloudOps workloads"
   type        = string
@@ -105,13 +99,13 @@ variable "enabled_cluster_log_types" {
 }
 
 variable "github_deploy_role_arn" {
-  description = "IAM role ARN used by GitHub Actions CD to install/upgrade Helm releases in the EKS cluster. Creates a namespace-scoped EKS access entry with AmazonEKS_EditPolicy so the role can manage Kubernetes resources without cluster-admin privileges."
+  description = "IAM role ARN used by GitHub Actions CD to install/upgrade Helm releases in the EKS cluster. Creates a namespace-scoped EKS access entry with AmazonEKSEditPolicy so the role can manage Kubernetes resources without cluster-admin privileges."
   type        = string
   default     = "arn:aws:iam::477170636125:role/cloudops-github-deploy-role"
 }
 
 variable "github_deploy_namespaces" {
-  description = "Kubernetes namespaces the GitHub deploy role is granted AmazonEKS_EditPolicy access to (application and monitoring namespaces that the Helm chart manages)"
+  description = "Kubernetes namespaces the GitHub deploy role is granted AmazonEKSEditPolicy access to (application and monitoring namespaces that the Helm chart manages)"
   type        = list(string)
   default     = ["cloudops-dev", "cloudops-monitoring"]
 }
