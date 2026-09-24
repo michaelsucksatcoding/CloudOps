@@ -141,11 +141,16 @@ jobs:
         run: |
           aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
 
+      # The cloudops-dev and cloudops-monitoring namespaces are pre-provisioned
+      # infrastructure (infrastructure/kubernetes/namespaces/namespace-dev.yaml),
+      # applied at cluster bootstrap by an admin identity. They are NOT created
+      # here: --create-namespace is deliberately omitted so the deploy role stays
+      # namespace-scoped (namespace objects are cluster-scoped and not covered by
+      # AmazonEKSEditPolicy). Helm fails fast if the target namespace is missing.
       - name: Deploy Application via Helm
         run: |
           helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai \
             --namespace ${{ env.TARGET_NAMESPACE }} \
-            --create-namespace \
             --set api.image.repository=${{ steps.login-ecr.outputs.registry }}/cloudops-api \
             --set api.image.tag=${{ github.sha }} \
             --set ml.image.repository=${{ steps.login-ecr.outputs.registry }}/cloudops-ml \

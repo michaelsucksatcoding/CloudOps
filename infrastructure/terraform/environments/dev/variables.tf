@@ -110,8 +110,8 @@ variable "github_deploy_role_arn" {
   default     = "arn:aws:iam::477170636125:role/cloudops-github-deploy-role"
 }
 
-variable "github_deploy_namespace" {
-  description = "Kubernetes namespace the GitHub deploy role is granted AmazonEKS_EditPolicy access to"
-  type        = string
-  default     = "cloudops-dev"
+variable "github_deploy_namespaces" {
+  description = "Kubernetes namespaces the GitHub deploy role is granted AmazonEKS_EditPolicy access to (application and monitoring namespaces that the Helm chart manages)"
+  type        = list(string)
+  default     = ["cloudops-dev", "cloudops-monitoring"]
 }

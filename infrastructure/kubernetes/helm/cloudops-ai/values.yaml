@@ -6,7 +6,11 @@ global:
   awsRegion: us-east-1
 
 namespace:
-  create: true
+  # Namespaces are pre-provisioned infrastructure (see
+  # infrastructure/kubernetes/namespaces/namespace-dev.yaml). The application
+  # chart must NOT create them: namespaces are cluster-scoped and the GitHub
+  # deploy role is intentionally namespace-scoped only.
+  create: false
   name: cloudops-dev
 
 config:
@@ -135,33 +139,11 @@ eventProcessor:
       cpu: 500m
       memory: 512Mi
 
-# AWS Load Balancer Controller required for the ALB ingress. RBAC/Deployment
-# run in-cluster via IRSA (no webhook, no cert-manager). The IRSA role ARN is
-# injected at deploy time via the eks.amazonaws.com/role-arn annotation;
-# clusterName/region are known dev defaults, vpcId must be set from the applied
-# VPC (terraform output "networking.vpc_id").
-awsLoadBalancerController:
-  enabled: true
-  image:
-    repository: public.ecr.aws/eks/aws-load-balancer-controller
-    tag: v2.8.2
-    pullPolicy: IfNotPresent
-  serviceAccount:
-    name: aws-load-balancer-controller
-    # ARN of the cloudops-alb-controller-irsa-dev role; leave empty to create
-    # the ServiceAccount without an annotation.
-    iamRoleArn: ""
-  clusterName: cloudops-eks-dev
-  region: us-east-1
-  vpcId: ""
-  logLevel: info
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+# AWS Load Balancer Controller is infrastructure, not application code.
+# It is installed separately (see infrastructure/terraform/modules/alb-controller
+# for the IAM role and the Kubernetes bootstrap manifests). The application
+# chart only consumes the 'alb' IngressClass via the ingress below and does not
+# install the controller, its ClusterRole(Binding), or its CRDs.
 
 ingress:
   enabled: true
@@ -186,7 +168,12 @@ networkPolicy:
 # services are ClusterIP-only; access them with kubectl port-forward.
 monitoring:
   enabled: true
-  namespace: cloudops-monitoring
+  namespace:
+    # The monitoring namespace is pre-provisioned infrastructure (same
+    # namespace-dev.yaml). The chart must NOT create it — namespace objects are
+    # cluster-scoped and the GitHub deploy role is namespace-scoped only.
+    create: false
+    name: cloudops-monitoring
   prometheus:
     enabled: true
     image:

@@ -126,7 +126,7 @@ resource "aws_eks_access_policy_association" "github_deploy" {
 
   access_scope {
     type       = "namespace"
-    namespaces = [var.github_deploy_namespace]
+    namespaces = var.github_deploy_namespaces
   }
 
   depends_on = [

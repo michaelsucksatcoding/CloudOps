@@ -1,8 +1,15 @@
-{{- if and .Values.monitoring .Values.monitoring.enabled }}
+{{- if and .Values.monitoring.enabled .Values.monitoring.namespace.create }}
+# The monitoring namespace is intentionally NOT created by this chart. It is
+# pre-provisioned infrastructure managed under
+# infrastructure/kubernetes/namespaces/namespace-dev.yaml. This template exists
+# only to preserve an opt-in path for standalone/local usage where the namespace
+# is not pre-provisioned. It is disabled by default (monitoring.namespace.create
+# is false) so the GitHub deploy role never requires cluster-scoped namespace
+# permissions.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  name: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring

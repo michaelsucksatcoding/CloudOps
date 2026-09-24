@@ -37,7 +37,7 @@ module "eks" {
   cluster_public_access_cidrs = var.cluster_public_access_cidrs
   enabled_cluster_log_types   = var.enabled_cluster_log_types
   github_deploy_role_arn      = var.github_deploy_role_arn
-  github_deploy_namespace     = var.github_deploy_namespace
+  github_deploy_namespaces    = var.github_deploy_namespaces
 }
 
 module "dynamodb" {

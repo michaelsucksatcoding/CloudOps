@@ -1,6 +1,0 @@
-{{- if .Values.awsLoadBalancerController.enabled }}
-# AWS Load Balancer Controller CRDs (TargetGroupBinding, IngressClassParams).
-# Bundled verbatim from the upstream v2.8.2 release so the controller's
-# controllers can register their watched resource types.
-{{ .Files.Get "files/aws-lb-controller-crds.yaml" }}
-{{- end }}

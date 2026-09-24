@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-prometheus-config
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus
@@ -98,7 +98,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-prometheus
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus
@@ -149,7 +149,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-prometheus
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: prometheus

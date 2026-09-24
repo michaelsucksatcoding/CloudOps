@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-grafana-datasources
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: grafana
@@ -14,7 +14,7 @@ data:
       - name: Prometheus
         type: prometheus
         access: proxy
-        url: http://{{ include "cloudops-ai.fullname" . }}-prometheus.{{ .Values.monitoring.namespace | default "cloudops-monitoring" }}.svc.cluster.local:{{ .Values.monitoring.prometheus.service.port | default 9090 }}
+        url: http://{{ include "cloudops-ai.fullname" . }}-prometheus.{{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}.svc.cluster.local:{{ .Values.monitoring.prometheus.service.port | default 9090 }}
         isDefault: true
         editable: false
 ---
@@ -22,7 +22,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-grafana-dashboards-providers
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: grafana
@@ -43,7 +43,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-grafana-dashboards
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: grafana
@@ -59,7 +59,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-grafana
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: grafana
@@ -121,7 +121,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "cloudops-ai.fullname" . }}-grafana
-  namespace: {{ .Values.monitoring.namespace | default "cloudops-monitoring" }}
+  namespace: {{ .Values.monitoring.namespace.name | default "cloudops-monitoring" }}
   labels:
     {{- include "cloudops-ai.labels" . | nindent 4 }}
     app.kubernetes.io/component: grafana

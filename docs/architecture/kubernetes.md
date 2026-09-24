@@ -100,8 +100,9 @@ helm lint infrastructure/kubernetes/helm/cloudops-ai
 # Dry-run template render
 helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai --values infrastructure/kubernetes/helm/cloudops-ai/values.yaml
 
-# Install / Upgrade
-helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai -n cloudops-dev --create-namespace
+# Install / Upgrade (namespaces are pre-provisioned infrastructure; the
+# namespace-scoped deploy role cannot create them)
+helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai -n cloudops-dev
 ```
 
 ---
