@@ -31,11 +31,6 @@ variable "event_processor_service_account_name" {
   default     = "cloudops-event-processor"
 }
 
-variable "kinesis_stream_arn" {
-  description = "ARN of the Kinesis telemetry stream"
-  type        = string
-}
-
 variable "dynamodb_table_arn" {
   description = "ARN of the DynamoDB hot-storage table"
   type        = string

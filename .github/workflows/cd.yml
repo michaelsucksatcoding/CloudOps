@@ -115,18 +115,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and Push Lambda Container Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: lambda
-          push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/cloudops-event-processor-lambda:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/cloudops-event-processor-lambda:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Scan Deployed Image for Vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:

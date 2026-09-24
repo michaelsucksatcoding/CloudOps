@@ -66,18 +66,5 @@ FROM base-runner AS event-processor
 
 CMD ["python", "-m", "services.event_processor.handler"]
 
-# ==========================================
-# Stage 6: AWS Lambda Runtime Target
-# ==========================================
-FROM public.ecr.aws/lambda/python:3.12 AS lambda
-
-COPY pyproject.toml README.md ./
-COPY services/ ./services/
-
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
-
-CMD ["services.event_processor.handler.lambda_handler"]
-
 # Default stage when no target is specified
 FROM api AS final

@@ -29,34 +29,6 @@ resource "aws_iam_role" "api" {
   }
 }
 
-resource "aws_iam_policy" "api_kinesis_write" {
-  name = "cloudops-api-kinesis-write-${var.environment}"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "KinesisWrite"
-        Effect = "Allow"
-        Action = [
-          "kinesis:PutRecord",
-          "kinesis:PutRecords",
-        ]
-        Resource = var.kinesis_stream_arn
-      }
-    ]
-  })
-
-  tags = {
-    Environment = var.environment
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "api_kinesis_write" {
-  policy_arn = aws_iam_policy.api_kinesis_write.arn
-  role       = aws_iam_role.api.name
-}
-
 # -----------------------------------------------------------------------------
 # Event Processor Workload IAM Role (IRSA)
 # -----------------------------------------------------------------------------

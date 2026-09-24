@@ -98,8 +98,8 @@ resource "aws_eks_cluster" "main" {
 #   cannot list resource "secrets" in the namespace "cloudops-dev"
 #
 # These resources add the deploy role as an EKS access entry (STANDARD) and bind
-# AmazonEKS_EditPolicy scoped to a single namespace. AmazonEKS_EditPolicy grants
-# read/write on namespaced resources (Secrets, ConfigMaps, Deployments,
+# AmazonEKSEditPolicy scoped to the deployment namespaces. AmazonEKSEditPolicy
+# grants read/write on namespaced resources (Secrets, ConfigMaps, Deployments,
 # Services, Pods, Jobs) sufficient for Helm without assigning cluster-admin or
 # AdministratorAccess.
 #
@@ -122,7 +122,7 @@ resource "aws_eks_access_policy_association" "github_deploy" {
 
   cluster_name  = aws_eks_cluster.main.name
   principal_arn = var.github_deploy_role_arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKS_EditPolicy"
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
 
   access_scope {
     type       = "namespace"

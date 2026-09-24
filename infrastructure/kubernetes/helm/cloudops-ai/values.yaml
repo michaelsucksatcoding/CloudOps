@@ -15,8 +15,7 @@ namespace:
 
 config:
   logLevel: INFO
-  telemetryStreamName: cloudops-telemetry-stream
-  # "in_memory" for local testing, "kinesis" to publish events to Kinesis Data Streams.
+  # "in_memory" is used for local testing and the current dev deployment.
   telemetryProducer: in_memory
   s3DataLakeBucket: cloudops-telemetry-lake
   dynamodbHotTable: cloudops-telemetry-hot

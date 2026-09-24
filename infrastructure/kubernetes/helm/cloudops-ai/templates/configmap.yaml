@@ -9,7 +9,6 @@ data:
   ENVIRONMENT: {{ .Values.global.environment | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   AWS_REGION: {{ .Values.global.awsRegion | quote }}
-  TELEMETRY_STREAM_NAME: {{ .Values.config.telemetryStreamName | quote }}
   TELEMETRY_PRODUCER: {{ .Values.config.telemetryProducer | quote }}
   S3_DATA_LAKE_BUCKET: {{ .Values.config.s3DataLakeBucket | quote }}
   DYNAMODB_HOT_TABLE: {{ .Values.config.dynamodbHotTable | quote }}
