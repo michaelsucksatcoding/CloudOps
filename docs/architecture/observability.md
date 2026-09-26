@@ -44,12 +44,11 @@ Prometheus and Grafana instance in `cloudops-monitoring`. Prometheus scrapes
 the API service at `/metrics`; Grafana is provisioned with System Overview,
 Kubernetes Workloads, and ML & Incidents dashboards.
 
-Before an install, create a Grafana password secret outside source control:
-
-```bash
-kubectl -n cloudops-monitoring create secret generic cloudops-grafana-admin \
-  --from-literal=password='<choose-a-strong-password>'
-```
+Grafana's admin password is generated on first install and stored only in the
+`cloudops-grafana-admin` Secret (monitoring namespace, key `password`); it is
+never committed to source control. The chart reuses the existing Secret on
+upgrade so the password stays stable (see
+`templates/monitoring-grafana-secret.yaml`).
 
 Then validate and install with the normal Helm workflow. Use port forwarding
 for local access:
