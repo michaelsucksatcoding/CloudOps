@@ -87,20 +87,180 @@ jobs:
 
       # Validates the primary local runtime. No cloud credentials are used or
       # required anywhere in this job.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install the Project and Its Declared Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
       - name: Validate Docker Compose Configuration
         run: docker compose config --quiet
 
-      - name: Assert no cloud SDK is installed with the project
+      - name: Assert the project depends on no cloud SDK
         run: |
-          # boto3/botocore were removed with the cloud architecture. This guards
-          # against a dependency creeping back in and re-coupling the platform
-          # to a cloud provider.
-          if pip list 2>/dev/null | grep -Eqi '^(boto3|botocore) '; then
-            echo "::error::boto3/botocore are installed but are not project dependencies"
-            pip list 2>/dev/null | grep -Ei '^(boto3|botocore) '
-            exit 1
-          fi
-          echo "No cloud SDK present in the environment."
+          # boto3/botocore were removed with the cloud architecture. This guard
+          # inspects the PROJECT's declared and resolved dependencies.
+          #
+          # It deliberately does NOT assert that the runner's global Python
+          # environment is free of boto3/botocore. GitHub-hosted runners ship
+          # those packages preinstalled for their own AWS tooling, which has
+          # nothing to do with this repository, so an environment-wide
+          # `pip list` check is an unreliable false positive.
+          python - <<'PY'
+          import os
+          import re
+          import sys
+          import tomllib
+          from importlib import metadata
+          from pathlib import Path
+
+          FORBIDDEN = {"boto3", "botocore"}
+          REQUIREMENT_FILE_PATTERNS = (
+              "requirements*.txt",
+              "requirements*.in",
+              "constraints*.txt",
+              "poetry.lock",
+              "Pipfile.lock",
+              "uv.lock",
+              "pdm.lock",
+          )
+          failures: list[str] = []
+
+          def normalize(name: str) -> str:
+              return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+          def requirement_name(spec: str) -> str | None:
+              match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", spec)
+              return normalize(match.group(1)) if match else None
+
+          def applies_to_install(spec: str, extras: set[str]) -> bool:
+              """Skip requirements gated behind extras that were not installed."""
+              if ";" not in spec:
+                  return True
+              gated = re.findall(
+                  r"""extra\s*==\s*["']([^"']+)["']""", spec.split(";", 1)[1]
+              )
+              if not gated:
+                  return True
+              return any(extra in extras or extra == "all" for extra in gated)
+
+          # --- 1. Declared dependencies (static, comment-safe) ---------------
+          project_name = os.environ.get("PROJECT_DIST_NAME", "cloudops-ai")
+          requested_extras: set[str] = set()
+          pyproject = Path("pyproject.toml")
+          if pyproject.is_file():
+              data = tomllib.loads(pyproject.read_text(encoding="utf-8-sig"))
+              project = data.get("project", {})
+              project_name = normalize(project.get("name", project_name))
+              optional = project.get("optional-dependencies", {}) or {}
+              requested_extras = {normalize(extra) for extra in optional}
+              declared: list[str] = list(project.get("dependencies", []) or [])
+              for extra_deps in optional.values():
+                  declared += list(extra_deps)
+              for spec in declared:
+                  name = requirement_name(str(spec))
+                  if name in FORBIDDEN:
+                      failures.append(f"pyproject.toml declares {name}: {spec}")
+          else:
+              project_name = normalize(project_name)
+
+          line_requirement = re.compile(
+              r"^\s*(?:(?:-e|--editable)\s+)?([A-Za-z0-9][A-Za-z0-9._-]*)"
+          )
+          skip_prefixes = ("#", "-r", "-c", "--requirement", "--constraint")
+          for pattern in REQUIREMENT_FILE_PATTERNS:
+              for path in sorted(Path(".").rglob(pattern)):
+                  if {".venv", ".git"} & set(path.parts):
+                      continue
+                  lines = path.read_text(
+                      encoding="utf-8-sig", errors="replace"
+                  ).splitlines()
+                  for lineno, line in enumerate(lines, 1):
+                      stripped = line.strip()
+                      if stripped.startswith(skip_prefixes):
+                          continue
+                      match = line_requirement.match(stripped)
+                      if match and normalize(match.group(1)) in FORBIDDEN:
+                          failures.append(f"{path}:{lineno} requires {stripped}")
+
+          # --- 2 and 3. Installed metadata and its dependency closure ------
+          try:
+              distribution = metadata.distribution(project_name)
+          except metadata.PackageNotFoundError:
+              failures.append(
+                  f"project distribution {project_name!r} is not installed, so "
+                  "its resolved dependencies cannot be verified"
+              )
+          else:
+              pending: dict[str, str] = {
+                  name: project_name
+                  for name in (
+                      requirement_name(spec)
+                      for spec in (distribution.requires or [])
+                      if applies_to_install(spec, requested_extras)
+                  )
+                  if name
+              }
+              visited: set[str] = set()
+              while pending:
+                  name, parent = pending.popitem()
+                  if name in visited:
+                      continue
+                  visited.add(name)
+                  try:
+                      child = metadata.distribution(name)
+                  except metadata.PackageNotFoundError:
+                      # Not installed, so this edge is inactive on this
+                      # interpreter/platform and cannot be a project dependency.
+                      continue
+                  if name in FORBIDDEN:
+                      failures.append(
+                          f"{name} is installed as a resolved dependency of "
+                          f"{project_name!r} (reached via {parent})"
+                      )
+                      continue
+                  for spec in child.requires or []:
+                      # Third-party extras were never requested, so an
+                      # extra-gated requirement is not part of this project.
+                      if not applies_to_install(spec, set()):
+                          continue
+                      child_name = requirement_name(spec)
+                      if child_name and child_name not in visited:
+                          pending[child_name] = name
+
+              # Informational only: ambient packages are not a project concern.
+              installed = {
+                  normalize(dist.metadata["Name"])
+                  for dist in metadata.distributions()
+                  if dist.metadata["Name"]
+              }
+              ambient = sorted(FORBIDDEN & installed)
+              if ambient:
+                  print(
+                      "::notice::boto3/botocore are present in the runner "
+                      f"environment ({', '.join(ambient)}). They are not a "
+                      "project dependency, so this is not a failure."
+                  )
+
+          if failures:
+              for failure in failures:
+                  print(f"::error::{failure}")
+              print(
+                  "::error::cloud SDK dependency violation(s): "
+                  f"{len(failures)} found"
+              )
+              sys.exit(1)
+
+          print(
+              f"Project {project_name!r} declares and resolves no cloud SDK "
+              "dependency."
+          )
+          PY
 
       - name: Start PostgreSQL and Wait for Healthy
         run: |
