@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 from typing import Any
@@ -80,19 +79,17 @@ class TelemetryProcessor:
         return event
 
     def process_batch(self, records: list[dict[str, Any]]) -> dict[str, Any]:
-        """Process a batch of Kinesis or raw records."""
+        """Process a batch of raw telemetry payload records.
+
+        Records may be raw telemetry payloads or ``{"data": "<json string>"}``
+        envelopes. A malformed record is reported without aborting the batch.
+        """
         processed_events: list[TelemetryEventCreate] = []
         errors: list[str] = []
 
         for idx, record in enumerate(records):
             try:
-                # Handle standard Kinesis record wrapper if present
-                if "kinesis" in record and "data" in record["kinesis"]:
-                    payload_raw = base64.b64decode(record["kinesis"]["data"]).decode(
-                        "utf-8"
-                    )
-                    payload = json.loads(payload_raw)
-                elif "data" in record and isinstance(record["data"], str):
+                if "data" in record and isinstance(record["data"], str):
                     payload = json.loads(record["data"])
                 else:
                     payload = record

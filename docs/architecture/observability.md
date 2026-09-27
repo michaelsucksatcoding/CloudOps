@@ -1,9 +1,13 @@
 # Observability & Monitoring
 
 CloudOps AI uses Prometheus for application metrics, Grafana for operational
-visualization, and structured JSON logs for container and AWS log collection.
-This is deliberately a small, reproducible monitoring stack for development
-and project demonstrations; it does not perform autonomous remediation.
+visualization, and structured JSON logs to container stdout. This is
+deliberately a small, reproducible monitoring stack for development and project
+demonstrations; it does not perform autonomous remediation.
+
+The platform targets no cloud provider, so there is no cloud log-aggregation
+service and no cloud alarms. Collection is done from the container runtime or
+from `kubectl logs` / `docker compose logs`.
 
 ## Application metrics
 
@@ -21,7 +25,7 @@ IDs, and timestamps do not create Prometheus time series.
 | `cloudops_http_errors_total` | 4xx, 5xx, and unhandled request errors. |
 | `cloudops_telemetry_events_received_total` | Accepted telemetry events. |
 | `cloudops_telemetry_events_processed_total` | Event-processor successes. |
-| `cloudops_telemetry_events_failed_total` | Validation, stream, or storage failures. |
+| `cloudops_telemetry_events_failed_total` | Validation, ingestion, or storage failures. |
 | `cloudops_anomalies_detected_total` | Isolation Forest predictions flagged anomalous. |
 | `cloudops_ml_inference_duration_seconds` | Isolation Forest inference latency histogram. |
 | `cloudops_ml_inference_total` | ML inference attempts by status. |
@@ -29,13 +33,21 @@ IDs, and timestamps do not create Prometheus time series.
 
 ## Logs and correlation
 
-API and Lambda event-processor output is JSON to stdout with timestamp, level,
-service, environment, event, request ID (when applicable), status, and
-duration. `X-Request-ID` is accepted and returned by the API; otherwise a new
-ID is generated. Raw telemetry payloads and configuration secrets are never
-included in logs. In EKS, configure the standard CloudWatch Container Insights
-agent or Fluent Bit integration to collect container stdout into CloudWatch
-Logs.
+API and event-processor output is JSON to stdout with timestamp, level, service,
+environment, event, request ID (when applicable), status, and duration.
+`X-Request-ID` is accepted and returned by the API; otherwise a new ID is
+generated. Raw telemetry payloads and configuration secrets are never included in
+logs.
+
+Collect from the local runtime:
+
+```bash
+docker compose logs -f api event-processor
+kubectl logs -l app.kubernetes.io/part-of=cloudops-ai -n cloudops-dev -f
+```
+
+Because the logs are plain JSON on stdout, any container log shipper can ingest
+them; the project does not bundle or require one.
 
 ## Helm monitoring stack
 
@@ -59,11 +71,11 @@ kubectl -n cloudops-monitoring port-forward service/cloudops-ai-grafana 3000:300
 ```
 
 The Kubernetes dashboard queries standard `kube-state-metrics` and kubelet
-cAdvisor metric names. Enable the managed EKS observability add-on or deploy
-those standard exporters in the cluster before treating those panels as data
-sources; the lightweight chart intentionally does not add another exporter.
+cAdvisor metric names. Deploy those standard exporters in your cluster before
+treating those panels as data sources; the lightweight chart intentionally does
+not add another exporter.
 
-## Alerts and CloudWatch
+## Alerts
 
 Prometheus evaluates alerts for high API error rate and P95 latency, telemetry
 processing failures, degraded/critical service health, and high anomaly rate.
@@ -71,13 +83,13 @@ They identify incidents only; no alert triggers a rollback, restart, or other
 remediation. Configure an Alertmanager receiver in the target environment when
 notification delivery is required.
 
-CloudWatch uses native AWS service metrics rather than duplicate application
-metrics. The operational runbook should monitor Lambda invocations/errors/
-duration, Kinesis iterator age, DynamoDB throttles, RDS CPU and connections,
-SQS queue depth when provisioned, and EKS cluster health. No CloudWatch alarms
-are provisioned by this repository because the corresponding AWS resources and
-notification destination are environment-owned; alarm thresholds and SNS
-recipients require the project owner's approval.
+Seven alert rules are defined in
+`infrastructure/kubernetes/monitoring/alerts/prometheus-rules.yaml` and are
+mounted read-only into the Compose Prometheus container, so both runtimes
+evaluate an identical rule set.
+
+No notification delivery is verified by this repository: no Alertmanager is
+deployed, so alert *evaluation* is verified but alert *delivery* is not.
 
 ## Simulator validation
 

@@ -1,11 +1,9 @@
-"""Tests for telemetry event processor and Lambda handler."""
+"""Tests for the telemetry event processor."""
 
-import base64
 import json
 
 import pytest
 
-from services.event_processor.handler import lambda_handler
 from services.event_processor.processor import TelemetryProcessor
 from services.event_processor.storage import InMemoryDataLakeStore, InMemoryHotStore
 
@@ -52,8 +50,31 @@ def test_process_invalid_event_raises() -> None:
     assert "Invalid telemetry event schema" in str(exc_info.value)
 
 
-def test_lambda_handler_kinesis_batch_success() -> None:
-    """Verify lambda handler decodes and processes kinesis record batches."""
+def test_process_batch_raw_payloads() -> None:
+    """Verify process_batch routes a batch of raw telemetry payloads."""
+    hot_store = InMemoryHotStore()
+    processor = TelemetryProcessor(hot_storage=hot_store)
+
+    records = [
+        {
+            "timestamp": "2026-09-02T15:20:32Z",
+            "service": "order-service",
+            "endpoint": "/checkout",
+            "status_code": 200,
+            "latency_ms": 110.0,
+            "cpu_percent": 45.0,
+            "memory_percent": 55.0,
+        }
+    ]
+    result = processor.process_batch(records)
+
+    assert result["processed"] == 1
+    assert result["failed"] == 0
+    assert len(hot_store.get_latest_events("order-service")) == 1
+
+
+def test_process_batch_accepts_json_string_envelope() -> None:
+    """Verify process_batch also accepts a {"data": "<json>"} envelope."""
     hot_store = InMemoryHotStore()
     processor = TelemetryProcessor(hot_storage=hot_store)
 
@@ -66,26 +87,18 @@ def test_lambda_handler_kinesis_batch_success() -> None:
         "cpu_percent": 45.0,
         "memory_percent": 55.0,
     }
-    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
-    event = {
-        "Records": [
-            {
-                "kinesis": {
-                    "data": encoded,
-                }
-            }
-        ]
-    }
-    result = lambda_handler(event, None, processor=processor)
-    assert result["statusCode"] == 200
+    result = processor.process_batch([{"data": json.dumps(payload)}])
+
     assert result["processed"] == 1
     assert result["failed"] == 0
     assert len(hot_store.get_latest_events("order-service")) == 1
 
 
-def test_lambda_handler_partial_batch_failures() -> None:
-    """Verify lambda handler continues processing when some records are malformed."""
-    processor = TelemetryProcessor()
+def test_process_batch_partial_failures() -> None:
+    """Verify process_batch continues processing when some records are malformed."""
+    hot_store = InMemoryHotStore()
+    processor = TelemetryProcessor(hot_storage=hot_store)
+
     valid_payload = {
         "timestamp": "2026-09-02T15:20:32Z",
         "service": "valid-service",
@@ -95,19 +108,13 @@ def test_lambda_handler_partial_batch_failures() -> None:
         "cpu_percent": 20.0,
         "memory_percent": 30.0,
     }
-    encoded_valid = base64.b64encode(json.dumps(valid_payload).encode("utf-8")).decode(
-        "utf-8"
-    )
-    encoded_invalid = base64.b64encode(b"invalid-not-json").decode("utf-8")
+    records = [
+        valid_payload,
+        {"service": "incomplete", "status_code": 999},
+    ]
+    result = processor.process_batch(records)
 
-    event = {
-        "Records": [
-            {"kinesis": {"data": encoded_valid}},
-            {"kinesis": {"data": encoded_invalid}},
-        ]
-    }
-    result = lambda_handler(event, None, processor=processor)
-    assert result["statusCode"] == 200
     assert result["processed"] == 1
     assert result["failed"] == 1
     assert len(result["errors"]) == 1
+    assert len(hot_store.get_latest_events("valid-service")) == 1

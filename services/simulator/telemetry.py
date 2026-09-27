@@ -52,7 +52,7 @@ class TelemetrySimulator:
             deployment_version="v1.0.0",
             instance_id=f"pod-{self.rng.randint(1000, 9999)}",
             environment="dev",
-            region="us-east-1",
+            region="local-1",
         )
 
 

@@ -1,5 +1,7 @@
 """Telemetry repository implementation using SQLAlchemy."""
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,4 +62,19 @@ class TelemetryRepository:
             .offset(skip)
             .limit(limit)
         )
+        return list(self.db.scalars(stmt).all())
+
+    def list_after_created_at(
+        self, after: datetime | None = None, limit: int = 100
+    ) -> list[TelemetryEntity]:
+        """List telemetry events created after a watermark, oldest first.
+
+        ``after=None`` returns the oldest unprocessed rows, which bootstraps the
+        watermark on first run. Used by the local event processor to consume
+        newly persisted events exactly once without re-processing older rows.
+        """
+        stmt = select(TelemetryEntity).order_by(TelemetryEntity.created_at.asc())
+        if after is not None:
+            stmt = stmt.where(TelemetryEntity.created_at > after)
+        stmt = stmt.limit(limit)
         return list(self.db.scalars(stmt).all())

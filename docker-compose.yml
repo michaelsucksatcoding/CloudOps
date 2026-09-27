@@ -10,12 +10,29 @@ services:
     environment:
       - ENVIRONMENT=dev
       - DATABASE_URL=postgresql://cloudops:cloudops_dev_pass@postgres:5432/cloudops_db
-      - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=INFO
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn services.api.app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+    restart: unless-stopped
+
+  event-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: event-processor
+    container_name: cloudops-event-processor
+    environment:
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=INFO
+      # The worker consumes telemetry persisted by the API, so it needs
+      # the same database as the API.
+      - DATABASE_URL=postgresql://cloudops:cloudops_dev_pass@postgres:5432/cloudops_db
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -28,18 +45,9 @@ services:
     environment:
       - ENVIRONMENT=dev
       - LOG_LEVEL=INFO
-    restart: unless-stopped
-
-  event-processor:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: event-processor
-    container_name: cloudops-event-processor
-    environment:
-      - ENVIRONMENT=dev
-      - LOG_LEVEL=INFO
-    restart: unless-stopped
+    # One-shot batch job: trains and evaluates the Isolation Forest baseline,
+    # prints metrics, then exits cleanly.
+    restart: "no"
 
   postgres:
     image: postgres:16-alpine
@@ -59,17 +67,44 @@ services:
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: cloudops-redis
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: cloudops-prometheus
     ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "9090:9090"
+    volumes:
+      - ./docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Reuse the canonical alert rules defined for Kubernetes deployments.
+      - ./infrastructure/kubernetes/monitoring/alerts:/etc/prometheus/alerts:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: cloudops-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      # Local-only default credentials for development/demo. Override via
+      # GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD for anything shared.
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Mount the canonical dashboards instead of copying them, so Compose and
+      # Helm always serve the same JSON (no drift).
+      - ./infrastructure/kubernetes/monitoring/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  grafana_data:

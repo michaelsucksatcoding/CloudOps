@@ -50,8 +50,8 @@ jobs:
       - name: Run Dependency Security Audit
         run: pip-audit --desc
 
-  infrastructure-validation:
-    name: Infrastructure & Manifest Validation
+  helm-manifest-validation:
+    name: Helm Chart & Manifest Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Source Code
@@ -65,26 +65,83 @@ jobs:
       - name: Lint Helm Chart
         run: helm lint infrastructure/kubernetes/helm/cloudops-ai
 
-      - name: Render Helm Templates Dry-Run
+      - name: Render Helm Templates Dry-Run (default values)
         run: helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.7.5"
-
-      - name: Check Terraform Formatting
-        run: terraform fmt -check -recursive infrastructure/terraform
-
-      - name: Validate Dev Terraform Environment
+      - name: Assert rendered manifests stay cloud-neutral
         run: |
-          terraform -chdir=infrastructure/terraform/environments/dev init -backend=false
-          terraform -chdir=infrastructure/terraform/environments/dev validate
+          render=$(helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai)
+          if echo "$render" | grep -Eqi 'amazonaws\.com|eks\.amazonaws|ingressClassName: alb|storageClassName: gp2'; then
+            echo "::error::Rendered Helm output contains cloud-provider-specific dependencies"
+            echo "$render" | grep -Ein 'amazonaws\.com|eks\.amazonaws|ingressClassName: alb|storageClassName: gp2'
+            exit 1
+          fi
+          echo "Rendered Helm output is cloud-neutral."
+
+  local-runtime-validation:
+    name: Local Docker Compose Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # Validates the primary local runtime. No cloud credentials are used or
+      # required anywhere in this job.
+      - name: Validate Docker Compose Configuration
+        run: docker compose config --quiet
+
+      - name: Assert no cloud SDK is installed with the project
+        run: |
+          # boto3/botocore were removed with the cloud architecture. This guards
+          # against a dependency creeping back in and re-coupling the platform
+          # to a cloud provider.
+          if pip list 2>/dev/null | grep -Eqi '^(boto3|botocore) '; then
+            echo "::error::boto3/botocore are installed but are not project dependencies"
+            pip list 2>/dev/null | grep -Ei '^(boto3|botocore) '
+            exit 1
+          fi
+          echo "No cloud SDK present in the environment."
+
+      - name: Start PostgreSQL and Wait for Healthy
+        run: |
+          docker compose up -d postgres
+          for i in $(seq 1 30); do
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' cloudops-postgres 2>/dev/null)" = "healthy" ]; then
+              echo "PostgreSQL is healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::PostgreSQL did not become healthy"
+          docker compose logs postgres
+          exit 1
+
+      - name: Run Migrations and Start API, Then Verify Health
+        run: |
+          docker compose up -d api
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API health endpoint responded."
+              curl -fsS http://localhost:8000/health
+              docker compose down -v
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API did not become healthy"
+          docker compose logs api
+          docker compose down -v
+          exit 1
+
+      - name: Run ML Evaluation Job
+        run: |
+          docker compose run --rm ml
+          docker compose down -v
 
   docker-build-and-scan:
     name: Container Build & Image Security Scan
     runs-on: ubuntu-latest
-    needs: [python-quality-and-tests, infrastructure-validation]
+    needs: [python-quality-and-tests, helm-manifest-validation]
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4

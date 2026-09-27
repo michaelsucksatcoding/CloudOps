@@ -15,8 +15,6 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 notebooks/
-infrastructure/terraform/.terraform/
-infrastructure/terraform/**/*.tfstate*
 *.log
 .env
 .env.*

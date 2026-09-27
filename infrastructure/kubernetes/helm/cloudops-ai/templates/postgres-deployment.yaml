@@ -45,7 +45,7 @@ spec:
             - name: data
               mountPath: /var/lib/postgresql/data
               # subPath avoids initialising postgres on the filesystem root of
-              # a freshly provisioned EBS volume (which contains /lost+found).
+              # a freshly provisioned volume (which may contain /lost+found).
               subPath: pgdata
           readinessProbe:
             exec:

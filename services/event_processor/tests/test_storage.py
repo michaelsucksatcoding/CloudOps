@@ -1,15 +1,11 @@
 """Unit tests for HotStorage and DataLakeStorage abstractions."""
 
 from datetime import UTC, datetime
-from decimal import Decimal
 
 from services.api.app.schemas.telemetry import TelemetryEventCreate
 from services.event_processor.storage import (
-    DynamoDBHotStore,
     InMemoryDataLakeStore,
     InMemoryHotStore,
-    _convert_decimals_to_floats,
-    _convert_floats_to_decimals,
 )
 
 
@@ -57,27 +53,3 @@ def test_in_memory_data_lake_store() -> None:
     objects = store.get_objects()
     assert key in objects
     assert "order-svc" in objects[key]
-
-
-def test_decimal_conversion_helpers() -> None:
-    """Verify float to Decimal and Decimal to float serialization."""
-    data = {"metric": 12.34, "count": 5, "nested": {"rate": 99.9}}
-    converted = _convert_floats_to_decimals(data)
-    assert isinstance(converted["metric"], Decimal)
-    assert isinstance(converted["nested"]["rate"], Decimal)
-
-    restored = _convert_decimals_to_floats(converted)
-    assert isinstance(restored["metric"], float)
-    assert restored["metric"] == 12.34
-    assert restored["count"] == 5
-
-
-def test_dynamodb_hot_store_initialization() -> None:
-    """Verify DynamoDBHotStore initial configuration properties."""
-    store = DynamoDBHotStore(
-        table_name="custom-telemetry-hot",
-        region="eu-west-1",
-        endpoint_url="http://localhost:8000",
-    )
-    assert store.table_name == "custom-telemetry-hot"
-    assert store.region == "eu-west-1"

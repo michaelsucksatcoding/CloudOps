@@ -23,7 +23,7 @@ def test_ingest_and_query_telemetry_event(client: TestClient) -> None:
         "instance_id": "pod-billing-79d8",
         "environment": "prod",
         "tenant_id": "org-acme",
-        "region": "us-east-1",
+        "region": "local-1",
     }
     response = client.post("/events", json=payload)
     assert response.status_code == 201

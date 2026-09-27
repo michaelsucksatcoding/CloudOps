@@ -1,24 +1,22 @@
-# Default values for cloudops-ai Helm chart.
-# Declare variables to be passed into templates.
+# Default values for the cloudops-ai Helm chart (cloud-neutral).
+#
+# Target: any generic local Kubernetes cluster (kind, k3d, minikube).
+# The chart intentionally contains no cloud-provider assumptions: no cloud identity
+# binding, no cloud ingress controller, no cloud block storage class, and no
+# managed-service wiring. All services are ClusterIP; reach the API and the
+# monitoring UIs with `kubectl port-forward` (see README.md).
 
 global:
   environment: dev
-  awsRegion: us-east-1
 
 namespace:
-  # Namespaces are pre-provisioned infrastructure (see
-  # infrastructure/kubernetes/namespaces/namespace-dev.yaml). The application
-  # chart must NOT create them: namespaces are cluster-scoped and the GitHub
-  # deploy role is intentionally namespace-scoped only.
+  # Namespaces are pre-provisioned (see infrastructure/kubernetes/namespaces/).
+  # The application chart must NOT create them: namespaces are cluster-scoped.
   create: false
   name: cloudops-dev
 
 config:
   logLevel: INFO
-  # "in_memory" is used for local testing and the current dev deployment.
-  telemetryProducer: in_memory
-  s3DataLakeBucket: cloudops-telemetry-lake
-  dynamodbHotTable: cloudops-telemetry-hot
 
 secrets:
   # DATABASE_URL is intentionally NOT committed here. The API receives it from
@@ -30,8 +28,8 @@ api:
   replicaCount: 2
   serviceAccount:
     name: cloudops-api
-    # ARN of the IRSA role; leave empty to create the ServiceAccount without an annotation.
-    iamRoleArn: ""
+    # Set to bind an externally-managed ServiceAccount instead of creating one.
+    create: true
   image:
     repository: cloudops-api
     tag: latest
@@ -85,7 +83,7 @@ ml:
       cpu: 500m
       memory: 512Mi
 
-# Development in-cluster PostgreSQL. The password is generated on first install
+# In-cluster PostgreSQL. The password is generated on first install
 # (see templates/postgres-secret.yaml) and stored only in the referenced
 # Kubernetes Secret; nothing sensitive is committed here. The Service name
 # matches the DNS name the application expects
@@ -104,10 +102,10 @@ postgres:
     tag: "16-alpine"
     pullPolicy: IfNotPresent
   storage:
-    # The EKS cluster has no default StorageClass; gp2 is the provisioned
-    # one (volumeBindingMode: WaitForFirstConsumer). Set per-cluster here.
     size: 5Gi
-    storageClass: gp2
+    # Empty uses the cluster's own default StorageClass. Set this per cluster
+    # if your default is unsuitable, e.g. "standard" (k3d) or "hostpath" (kind).
+    storageClass: ""
   resources:
     requests:
       cpu: 100m
@@ -121,8 +119,8 @@ eventProcessor:
   replicaCount: 1
   serviceAccount:
     name: cloudops-event-processor
-    # ARN of the IRSA role; leave empty to create the ServiceAccount without an annotation.
-    iamRoleArn: ""
+    # Set to bind an externally-managed ServiceAccount instead of creating one.
+    create: true
   image:
     repository: cloudops-event-processor
     tag: latest
@@ -139,39 +137,28 @@ eventProcessor:
       cpu: 500m
       memory: 512Mi
 
-# AWS Load Balancer Controller is infrastructure, not application code.
-# It is installed separately (see infrastructure/terraform/modules/alb-controller
-# for the IAM role and the Kubernetes bootstrap manifests). The application
-# chart only consumes the 'alb' IngressClass via the ingress below and does not
-# install the controller, its ClusterRole(Binding), or its CRDs.
-
+# Optional generic Ingress. Disabled by default because a local cluster usually
+# has no ingress controller; reach the API with `kubectl port-forward` instead.
+# To enable, set enabled: true and className to your cluster's IngressClass
+# (e.g. "nginx" for kind, "traefik" for k3d).
 ingress:
-  enabled: true
-  className: alb
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/healthcheck-path: /health/live
-    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
-    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
-    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+  enabled: false
+  className: ""
+  annotations: {}
   path: /
   pathType: Prefix
 
 networkPolicy:
   enabled: true
 
-# Lightweight in-cluster monitoring for development and demonstrations.  Both
+# Lightweight in-cluster monitoring for development and demonstrations. Both
 # services are ClusterIP-only; access them with kubectl port-forward.
 monitoring:
   enabled: true
   namespace:
-    # The monitoring namespace is pre-provisioned infrastructure (same
+    # The monitoring namespace is pre-provisioned (same
     # namespace-dev.yaml). The chart must NOT create it — namespace objects are
-    # cluster-scoped and the GitHub deploy role is namespace-scoped only.
+    # cluster-scoped.
     create: false
     name: cloudops-monitoring
   prometheus:

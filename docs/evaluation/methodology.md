@@ -38,7 +38,8 @@ delivery is intentionally not evaluated by the local harness.
 
 ## Scope of measurements
 
-This does not measure Kinesis, Lambda, S3, DynamoDB, network transport,
-Grafana rendering, Prometheus alert delivery, CloudWatch, or EKS HPA timing.
-Local in-memory performance measurements are not equivalent to production
+This does not measure network transport, Grafana rendering, Prometheus alert
+delivery, or Kubernetes autoscaling timing. The platform targets no cloud
+provider, so no managed-service latency is included by design.
+Local in-process performance measurements are not equivalent to production
 distributed-system measurements.

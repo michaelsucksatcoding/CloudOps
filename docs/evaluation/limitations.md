@@ -19,13 +19,28 @@ implementation tasks.
    mean inference latency, not percentiles.
 5. **No confidence intervals.** Two deterministic runs were compared; no
    stochastic re-runs or confidence intervals were collected.
-6. **No AWS-path timing.** Pipeline and API measurements are local/in-memory and
-   exclude Kinesis, Lambda, S3, DynamoDB, network transport, Grafana rendering,
-   Prometheus alert delivery, CloudWatch, and EKS HPA timing.
-7. **Kinesis service-access restriction.** The AWS account returned
-   `SubscriptionRequiredException` when accessing Amazon Kinesis Data Streams;
-   the Kinesis stream could not be provisioned and the live
-   Kinesis → Lambda → DynamoDB/S3 path was not experimentally validated.
-8. **Local measurements ≠ production measurements.** Sequential in-process
+6. **No cloud-path timing.** Pipeline and API measurements are local and
+   in-process. They exclude network transport, Grafana rendering, Prometheus
+   alert delivery, and Kubernetes autoscaling timing. The project targets no
+   cloud provider, so no managed-service latency is included by design.
+7. **No durable asynchronous fan-out.** The former managed-stream architecture
+   (API → durable stream → serverless consumer) was removed rather than replaced
+   with another hosted service. The current event path polls PostgreSQL with a
+   `created_at` watermark. This costs durable broker semantics, independent
+   consumer scaling, and a non-durable in-process hot store; throughput is
+   bounded by the database. This is an accepted reduction in capability, not an
+   equivalent substitution. See
+   [event-processing.md](../architecture/event-processing.md) and
+   [ADR 0005](../decisions/0005-cloud-neutral-architecture.md).
+8. **Stream and object-store semantics are no longer exercised.** The deleted
+   Kinesis, DynamoDB, and S3 adapters were the only place partitioned ordering,
+   replay, and object-storage archival were tested. That coverage is genuinely
+   gone and is not replaced by an equivalent test.
+9. **Local measurements ≠ production measurements.** Sequential in-process
    latency/throughput figures are not equivalent to production distributed-system
    measurements and must not be presented as production performance.
+10. **No infrastructure-as-code demonstration.** All Terraform configuration was
+    removed, so the project can no longer demonstrate provisioned cloud
+    infrastructure. Local Kubernetes deployment via Helm is unverified in CI
+    because no cluster is available in the runner environment; the chart is
+    validated by `helm lint` and `helm template` only.

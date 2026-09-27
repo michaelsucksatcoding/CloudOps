@@ -1,10 +1,13 @@
-# CI/CD & DevOps Automation Architecture — CloudOps AI
+# CI & DevOps Automation Architecture — CloudOps AI
 
-This document details the design, configuration, security model, and execution lifecycle of the CloudOps AI continuous integration and deployment pipelines.
+This document details the design, configuration, and security model of the CloudOps AI continuous integration pipeline.
+
+The project has **no continuous deployment**. There is no cloud account, no container registry, and no managed cluster. Releases are run manually from a local machine. See
+[ADR 0005](../decisions/0005-cloud-neutral-architecture.md).
 
 ---
 
-## 1. End-to-End Delivery Lifecycle
+## 1. End-to-End Lifecycle
 
 ```text
                Developer
@@ -13,148 +16,151 @@ This document details the design, configuration, security model, and execution l
          Git Push / Pull Request
                    │
                    ▼
-     GitHub Actions Workflow: CI
-     ┌─────────────────────────────────────────────────────────────┐
-     │ 1. Python 3.12 Runtime Setup & Pip Cache                    │
-     │ 2. Code Quality Gates:                                      │
-     │    ├── Ruff Linter (PEP8, imports, best practices)          │
-     │    ├── Ruff Formatter Check                                 │
-     │    └── Mypy Static Type Checking                            │
-     │ 3. Automated Test Suite:                                    │
-     │    └── Pytest with Coverage Matrix                          │
-     │ 4. Dependency Security Audit:                               │
-     │    └── PyPA pip-audit (Vulnerability database scan)         │
-     │ 5. Multi-Stage Docker Builds:                               │
-     │    ├── cloudops-api                                         │
-     │    ├── cloudops-ml                                          │
-     │    └── cloudops-event-processor                             │
-     │ 6. Container Image Security Scan:                           │
-     │    └── Trivy (CRITICAL / HIGH OS & Library CVE scan)        │
-     │ 7. Infrastructure Dry-Run Validation:                       │
-     │    ├── Helm Lint & Template Render                          │
-     │    └── Terraform Format Check & Dev Config Validation       │
-     └─────────────────────────────────────────────────────────────┘
+       GitHub Actions Workflow: ci.yml
+       ┌─────────────────────────────────────────────────────────────┐
+       │ 1. Python 3.12 Runtime Setup & Pip Cache                    │
+       │ 2. Code Quality Gates:                                      │
+       │    ├── Ruff Linter                                         │
+       │    ├── Ruff Formatter Check                                │
+       │    └── Mypy Strict Type Checking                           │
+       │ 3. Automated Test Suite:                                    │
+       │    └── Pytest with Coverage                                │
+       │ 4. Dependency Security Audit:                               │
+       │    └── PyPA pip-audit (Vulnerability database scan)         │
+       │ 5. Helm Chart Validation:                                   │
+       │    ├── helm lint                                           │
+       │    ├── helm template (default values)                      │
+       │    └── cloud-neutral render guard                          │
+       │ 6. Local Runtime Validation:                                │
+       │    ├── docker compose config --quiet                       │
+       │    ├── no-cloud-SDK guard (boto3/botocore must be absent)  │
+       │    ├── PostgreSQL healthy                                  │
+       │    ├── API /health reachable                               │
+       │    └── ML evaluation job completes                         │
+       │ 7. Multi-Stage Docker Builds + Trivy Image Scan             │
+       └─────────────────────────────────────────────────────────────┘
                    │
-              (Merge to main)
-                   │
-                   ▼
-     GitHub Actions Workflow: CD
-     ┌─────────────────────────────────────────────────────────────┐
-     │ 1. Short-Lived AWS Authentication via OpenID Connect (OIDC) │
-     │ 2. Authenticate Docker with Amazon ECR                      │
-     │ 3. Build & Push Multi-Stage Images:                         │
-     │    ├── <ecr-registry>/cloudops-api:<git-sha>                │
-     │    ├── <ecr-registry>/cloudops-ml:<git-sha>                 │
-     │    └── <ecr-registry>/cloudops-event-processor:<git-sha>    │
-     │ 4. Update Target EKS Kubeconfig via AWS CLI                 │
-     │ 5. Automated Helm Upgrade/Install:                          │
-     │    └── Injects immutable Git SHA tags into EKS release      │
-     │ 6. Post-Deployment Verification:                            │
-     │    ├── kubectl rollout status (API, ML, Event-Processor)    │
-     │    └── Automated HTTP Smoke Test (/health/live, /health)    │
-     └─────────────────────────────────────────────────────────────┘
+          (merge to main)
                    │
                    ▼
-          Running EKS Cluster
+      Local machine: docker compose up --build
+      (primary runtime, or helm upgrade to a local cluster)
 ```
 
 ---
 
 ## 2. CI Workflow (`.github/workflows/ci.yml`)
 
-The CI workflow runs on every pull request targeting `main`, pushes to `main`, and manual dispatches.
+The CI workflow runs on every pull request targeting `main`, pushes to `main`, and manual dispatches. It requires **no secrets, no credentials, and no external accounts**.
 
-### Quality & Security Gates
-1. **Ruff Lint & Format**: Validates syntax, imports order (`I`), flake8 bug prevention (`B`), and enforces black-compatible formatting.
-2. **Mypy Strict Analysis**: Enforces comprehensive type coverage on `services/`.
-3. **Pytest & Coverage**: Executes unit, integration, and e2e test suites.
-4. **Dependency Audit (`pip-audit`)**: Scans all installed packages against the PyPA Advisory Database and OSV.
-5. **Docker Buildx Caching**: Tests container image builds across `api`, `ml`, and `event-processor` build targets.
-6. **Container Security Scan (`trivy`)**: Scans the compiled image filesystem for operating system and library CVEs.
-7. **Infrastructure Linter**: Runs `helm lint` and `terraform fmt -check` to detect infrastructure regressions before merge.
+### Job: `python-quality-and-tests`
+
+1. **Ruff Lint & Format** — validates syntax, import order (`I`), flake8-bugbear
+   rules (`B`), pyupgrade rules (`UP`), and formatting.
+2. **Mypy Strict Analysis** — enforces type coverage on `services/`.
+3. **Pytest & Coverage** — executes unit and integration suites with a coverage
+   report.
+4. **Dependency Audit (`pip-audit`)** — scans installed packages against the PyPA
+   Advisory Database and OSV.
+
+### Job: `helm-manifest-validation`
+
+1. **`helm lint`** — chart structure and template validity.
+2. **`helm template`** — renders the chart with the canonical default values.
+3. **Cloud-neutral guard** — fails the job if the rendered output contains a
+   cloud-provider-specific dependency:
+
+   ```bash
+   grep -Eqi 'amazonaws\.com|eks\.amazonaws|ingressClassName: alb|storageClassName: gp2'
+   ```
+
+   The guard intentionally names the patterns it forbids. It is an assertion of
+   absence, not a configuration.
+
+### Job: `local-runtime-validation`
+
+Validates the primary runtime on the runner.
+
+1. **`docker compose config --quiet`** — the Compose file is well-formed.
+2. **No-cloud-SDK guard** — fails if `boto3` or `botocore` is installed. These
+   were removed with the cloud architecture; this prevents the coupling from
+   returning unnoticed.
+3. **PostgreSQL** — starts and waits for the `pg_isready` healthcheck.
+4. **API** — starts the API (which runs `alembic upgrade head`) and waits for
+   `/health`.
+5. **ML evaluation** — runs the one-shot ML container to confirm the evaluation
+   path executes end to end.
+
+### Job: `docker-build-and-scan`
+
+Builds all three image targets (`api`, `ml`, `event-processor`) with buildx
+GitHub Actions layer caching, then scans the API image with Trivy for
+CRITICAL/HIGH OS and library CVEs.
 
 ---
 
-## 3. CD Workflow (`.github/workflows/cd.yml`)
+## 3. Permissions
 
-The CD workflow deploys exclusively from the `main` branch or via authorized manual dispatches with environment targeting (`dev` / `prod`).
-
-### Key Operational Characteristics
-- **Concurrency Management**: Configured with `cancel-in-progress: false` to ensure in-flight deployments are never abruptly terminated.
-- **Traceable Immutable Tagging**: Images are tagged with the full Git commit SHA (`${{ github.sha }}`) ensuring every container running in EKS is 100% traceable to source code.
-- **Fail-Safe Rollout**: Deploys using Helm's `--wait` and validates pod readiness using `kubectl rollout status` with a strict timeout.
-
----
-
-## 4. AWS OIDC Authentication & IAM Least Privilege
-
-The pipeline uses **AWS IAM OpenID Connect (OIDC)** identity federation, completely eliminating long-lived AWS Access Keys and Secret Keys from GitHub repository secrets.
-
-### GitHub Actions Permissions
 ```yaml
 permissions:
   contents: read
-  id-token: write # Required for requesting short-lived AWS OIDC token
 ```
 
-### IAM Role Trust Policy Template
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:<GITHUB_ORG_OR_USER>/cloudops-ai:*"
-        }
-      }
-    }
-  ]
-}
+Read-only repository access. No `id-token` write permission is requested,
+because there is no OIDC exchange and no external system to authenticate to.
+
+---
+
+## 4. Required GitHub Configuration
+
+**None.** The pipeline has no repository secrets and no environment variables.
+It runs unmodified on a default `ubuntu-latest` runner.
+
+---
+
+## 5. Deployment (Manual, Local)
+
+Deployment is deliberately not automated. From a local machine:
+
+### Docker Compose (primary)
+
+```bash
+docker compose up --build
+curl http://localhost:8000/health
 ```
 
-### IAM Permissions Policy (Least Privilege)
-The deployment role requires permissions only for ECR push, EKS cluster description, and token acquisition:
-- `ecr:GetAuthorizationToken`
-- `ecr:BatchCheckLayerAvailability`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, `ecr:PutImage`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`
-- `eks:DescribeCluster`
+### Helm to a local cluster (secondary)
+
+```bash
+kubectl apply -f infrastructure/kubernetes/namespaces/
+helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai \
+  --namespace cloudops-dev --create-namespace
+kubectl exec -n cloudops-dev deploy/cloudops-ai-api -- alembic upgrade head
+kubectl port-forward -n cloudops-dev svc/cloudops-ai-api 8000:8000
+```
+
+### Smoke testing a running instance
+
+```bash
+python scripts/smoke_test.py --base-url http://localhost:8000
+```
+
+`smoke_test.py` validates `/health/live`, `/health/ready`, `/health`,
+`/services`, and `/metrics`.
 
 ---
 
-## 5. Required GitHub Configuration
+## 6. Troubleshooting
 
-### Repository Secrets
-| Secret Name | Description | Example |
-|---|---|---|
-| `AWS_ROLE_ARN` | ARN of the IAM Role assumed via OIDC | `arn:aws:iam::123456789012:role/cloudops-github-deploy-role` |
-| `AWS_REGION` | Target AWS Region | `us-east-1` |
-| `EKS_CLUSTER_NAME` | Name of the Amazon EKS cluster | `cloudops-eks-dev` |
-
----
-
-## 6. Post-Deployment Verification & Smoke Testing
-
-After Helm applies changes to EKS, the workflow executes automated verification:
-1. `kubectl rollout status` monitors pod deployment progression.
-2. `scripts/smoke_test.py` validates:
-   - `/health/live` — Ensures the process is running and responding.
-   - `/health/ready` — Ensures database connectivity is established.
-   - `/health` — Validates system health diagnostic payload.
-   - `/services` — Ensures metadata catalog is queryable.
-   - `/metrics` — Verifies metrics endpoint accessibility.
-
----
-
-## 7. Troubleshooting & Failure Recovery
-
-- **CI Failure on `pip-audit`**: Upgrade vulnerable sub-dependencies in `pyproject.toml` or add an explicitly reviewed vulnerability exception.
-- **CD Rollout Timeout**: Check Kubernetes events with `kubectl describe deployment cloudops-ai-api -n cloudops-dev` and pod logs with `kubectl logs -l app.kubernetes.io/component=api -n cloudops-dev`.
-- **OIDC STS Token Denial**: Verify the repository name in the IAM role trust policy `sub` condition matches the GitHub repository path exactly.
+- **`pip-audit` failure** — upgrade the vulnerable sub-dependency in
+  `pyproject.toml` or add an explicitly reviewed exception.
+- **Cloud-neutral guard failure** — a template or value reintroduced a
+  cloud-specific dependency. Remove it; do not widen the guard.
+- **No-cloud-SDK guard failure** — something re-added `boto3` or `botocore` to the
+  dependency set. This must be reverted, not bypassed.
+- **PostgreSQL/API never healthy in CI** — inspect `docker compose logs` output
+  printed by the failing step.
+- **Local Kubernetes pod not ready** — check
+  `kubectl describe deployment cloudops-ai-api -n cloudops-dev` and
+  `kubectl logs -l app.kubernetes.io/component=api -n cloudops-dev`. Migrations
+  are not run automatically; run `alembic upgrade head` manually.

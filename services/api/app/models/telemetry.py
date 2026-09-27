@@ -77,7 +77,6 @@ class TelemetryEntity(Base):
     )
     region: Mapped[str | None] = mapped_column(
         String(32),
-        default="us-east-1",
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

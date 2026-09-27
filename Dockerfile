@@ -64,7 +64,7 @@ CMD ["python", "-m", "services.ml.evaluate"]
 # ==========================================
 FROM base-runner AS event-processor
 
-CMD ["python", "-m", "services.event_processor.handler"]
+CMD ["python", "-m", "services.event_processor"]
 
 # Default stage when no target is specified
 FROM api AS final

@@ -1,130 +1,163 @@
-# Kubernetes & EKS Architecture — CloudOps AI
+# Kubernetes Architecture (Generic Local Cluster) — CloudOps AI
 
-This document details the production-oriented containerization, Kubernetes topology, and Amazon EKS infrastructure design for CloudOps AI.
+This document details the containerization and Kubernetes design for CloudOps AI. The chart targets **any generic local Kubernetes cluster** (kind, k3d, minikube) and contains no cloud-provider assumptions. See
+[ADR 0005](../decisions/0005-cloud-neutral-architecture.md).
+
+Docker Compose is the primary runtime; Kubernetes is a secondary option. See the
+[README](../../README.md) for the Compose workflow.
 
 ---
 
-## 1. High-Level Cluster Topology
+## 1. High-Level Topology
 
 ```text
-                               AWS VPC (10.0.0.0/16)
+Generic local Kubernetes cluster (kind / k3d / minikube)
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ Public Subnets (10.0.1.0/24, 10.0.2.0/24)                                  │
-│   ├── Internet Gateway                                                      │
-│   ├── NAT Gateway (Single EIP for dev cost optimization)                    │
-│   └── AWS Application Load Balancer (ALB)                                   │
-│           │                                                                 │
-│           ▼ (Port 8000)                                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Private Subnets (10.0.10.0/24, 10.0.11.0/24)                                │
-│   EKS Managed Node Group (t3.medium, min: 2, max: 4, desired: 2)           │
 │                                                                             │
 │   Namespace: cloudops-dev                                                   │
 │   ┌───────────────────────────────────────────────────────────────────────┐ │
 │   │                                                                       │ │
 │   │   ┌───────────────────────────────────────────────┐                   │ │
-│   │   │ cloudops-api (Deploy: 2 Pods + HPA 2-5)       │                   │ │
-│   │   │   ├── Port 8000 (ClusterIP Service)           │                   │ │
-│   │   │   ├── Liveness: /health/live                  │                   │ │
-│   │   │   └── Readiness: /health/ready                │                   │ │
+│   │   │ cloudops-api (Deployment: 2 replicas + HPA)   │                   │ │
+│   │   │   ├── ClusterIP Service :8000                  │                   │ │
+│   │   │   ├── Liveness:  /health/live                  │                   │ │
+│   │   │   └── Readiness: /health/ready                 │                   │ │
 │   │   └──────┬───────────────────────┬────────────────┘                   │ │
-│   │          │ (Internal RPC/HTTP)   │ (DB queries)                       │ │
+│   │          │ (HTTP)                │ (SQL over 5432)                    │ │
 │   │          ▼                       ▼                                    │ │
 │   │   ┌──────────────────┐   ┌────────────────────────┐                   │ │
-│   │   │ cloudops-ml      │   │ Postgres & Redis       │                   │ │
-│   │   │ (ClusterIP: 8001)│   │ (Internal Storage)     │                   │ │
-│   │   └──────────────────┘   └────────────────────────┘                   │ │
-│   │                                                                       │ │
+│   │   │ cloudops-ml      │   │ cloudops-postgres      │                   │ │
+│   │   │ ClusterIP :8001  │   │ ClusterIP :5432        │                   │ │
+│   │   └──────────────────┘   │ PVC (default SC)       │                   │ │
+│   │                          └───────────┬────────────┘                   │ │
 │   │   ┌───────────────────────────────────────────────┐                   │ │
-│   │   │ cloudops-event-processor                      │                   │ │
-│   │   │ (Worker Daemon / Consumer)                    │                   │ │
+│   │   │ cloudops-event-processor (Deployment: 1)      │                   │ │
+│   │   │   └── polls PostgreSQL, routes to hot/lake   │                   │ │
 │   │   └───────────────────────────────────────────────┘                   │ │
 │   │                                                                       │ │
 │   └───────────────────────────────────────────────────────────────────────┘ │
 │                                                                             │
 │   Namespace: cloudops-monitoring                                            │
-│   └── Monitoring & Observability agents                                     │
+│   ├── cloudops-prometheus  (ClusterIP :9090)                                │
+│   └── cloudops-grafana     (ClusterIP :3000)                                │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Ingress & Service Exposure
+## 2. Service Exposure
 
-- **Public Traffic**: Enters through the AWS Application Load Balancer (ALB) provisioned automatically via AWS Load Balancer Controller using the `cloudops-api-ingress` resource.
-- **Internal Only**: The `cloudops-ml` and `cloudops-event-processor` services have no external Ingress rules. They are reachable only within the Kubernetes cluster via ClusterIP services.
-- **Database & Cache**: Kept entirely internal in private subnets, never exposed publicly.
-
----
-
-## 3. Security & Isolation Model
-
-1. **Non-Root Execution**:
-   - All container images run as `appuser` (UID 1000).
-   - `securityContext` specifies `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, and drops all Linux capabilities (`drop: ["ALL"]`).
-2. **Kubernetes NetworkPolicies**:
-   - `default-deny-ingress`: Drops all unsolicited ingress traffic across the namespace.
-   - `api-network-policy`: Permits HTTP traffic on port 8000 from the ALB; allows egress to ML (8001), PostgreSQL (5432), Redis (6379), DNS (53), and HTTPS (443).
-   - `ml-network-policy`: Restricts ingress exclusively to pods with `app: cloudops-api`.
-   - `event-processor-network-policy`: Blocks all direct ingress; permits outbound streaming/storage calls.
-3. **Secret Externalization**:
-   - Sensitive database passwords and connection strings are stored in `Secret` manifests or injected via AWS Secrets Manager.
-   - Non-sensitive parameters are managed via `ConfigMap`.
+- **No external exposure by default.** Ingress is `enabled: false` because a
+  local cluster usually has no ingress controller.
+- **`cloudops-api`** — `ClusterIP` on port 8000. Reached with
+  `kubectl port-forward -n cloudops-dev svc/cloudops-ai-api 8000:8000`.
+- **`cloudops-ml` and `cloudops-event-processor`** — `ClusterIP` only, never
+  exposed.
+- **`cloudops-postgres`** — `ClusterIP` on 5432, never exposed.
+- **Monitoring** — `ClusterIP` on 9090/3000, reached with `kubectl port-forward`.
+- **Optional Ingress** — enable per cluster if a controller exists, for example
+  `--set ingress.enabled=true --set ingress.className=nginx` (kind) or
+  `traefik` (k3d). No provider-specific annotations are shipped.
 
 ---
 
-## 4. Horizontal Pod Autoscaling (HPA)
+## 3. Storage
 
-The `cloudops-api` deployment includes an HPA configured to scale pod replicas dynamically between 2 and 5 based on CPU utilization:
-- Target average CPU utilization: `70%`.
-- Ensures high availability during traffic surges while preserving baseline resources during quiet periods.
-
----
-
-## 5. Health Checks & Probes
-
-- **Liveness (`/health/live`)**: Lightweight process probe. Returns HTTP 200 without connecting to external databases to prevent cascading pod restart loops if the database experiences transient load.
-- **Readiness (`/health/ready`)**: Verifies database connectivity. Removes the pod from ALB target routing if the database connection drops, without restarting the container.
-- **Backward-Compatible Health (`/health`)**: Retains complete diagnostic summary.
-
----
-
-## 6. Helm Deployment
-
-The unified Helm chart is located at `infrastructure/kubernetes/helm/cloudops-ai/`:
+PostgreSQL uses a `PersistentVolumeClaim` of 5Gi. `postgres.storage.storageClass`
+defaults to the empty string, which means the cluster's own default
+`StorageClass` is used. Set it explicitly per cluster when the default is
+unsuitable:
 
 ```bash
-# Lint chart
-helm lint infrastructure/kubernetes/helm/cloudops-ai
-
-# Dry-run template render
-helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai --values infrastructure/kubernetes/helm/cloudops-ai/values.yaml
-
-# Install / Upgrade (namespaces are pre-provisioned infrastructure; the
-# namespace-scoped deploy role cannot create them)
-helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai -n cloudops-dev
+--set postgres.storage.storageClass=standard   # k3d
+--set postgres.storage.storageClass=hostpath   # kind
 ```
+
+The deployment uses `strategy: Recreate` so the single-writer volume is not
+attached to two pods during a rollout.
 
 ---
 
-## 7. Verified Dev Deployment (2026-09-18)
+## 4. Security & Isolation
 
-The design above was deployed to the `cloudops-eks-dev` cluster and verified
-on 2026-09-18:
+1. **Non-Root Execution**
+   - Containers run as UID 1000 with `runAsNonRoot: true`.
+   - `allowPrivilegeEscalation: false` and all Linux capabilities dropped
+     (`drop: ["ALL"]`).
+2. **Kubernetes NetworkPolicies**
+   - `default-deny-ingress` — drops unsolicited ingress across the namespace.
+   - `api-network-policy` — permits HTTP on 8000; allows egress to ML (8001),
+     PostgreSQL (5432), Redis (6379), DNS (53), and HTTPS (443).
+   - `ml-network-policy` — restricts ingress to pods labelled `app: cloudops-api`.
+   - `event-processor-network-policy` — blocks all direct ingress; permits
+     outbound database and DNS calls.
+3. **Secret Externalization**
+   - The PostgreSQL password is generated on first install and stored only in a
+     Kubernetes `Secret` (`templates/postgres-secret.yaml`). Nothing sensitive is
+     committed.
+   - The API receives `DATABASE_URL` from that Secret via `secretKeyRef`.
+   - Non-sensitive parameters are managed via `ConfigMap`.
+4. **ServiceAccounts** — plain cluster-scoped ServiceAccounts with no cloud identity
+   binding or workload-identity annotation.
 
-- Cluster, node group, and the `cloudops-dev` / `cloudops-monitoring`
-  namespaces running.
-- API running with 2 pods; PostgreSQL running with the Alembic migration
-  applied and PVC bound.
-- ALB provisioned via the Load Balancer Controller; both targets healthy;
-  `GET /health/live` and `GET /health/ready` returned HTTP 200 (readiness
-  confirmed database connectivity).
-- Prometheus and Grafana running in `cloudops-monitoring`; API metrics scraped;
-  Grafana Prometheus datasource and 3 dashboards provisioned; 6 alert rules
-  loaded (inactive during verification because no incident was active).
-- EBS CSI addon active.
-- Terraform validation/plan and Helm lint/template succeeded.
+---
 
-Note: alert notification delivery was not validated (no Alertmanager is
-deployed), and the Kinesis → Lambda → DynamoDB/S3 event path is not live-verified
-(see the Kinesis limitation in the [README](../../README.md)).
+## 5. Horizontal Pod Autoscaling
+
+`cloudops-api` has an HPA scaling between 2 and 5 replicas on 70% average CPU
+utilization. This requires the Metrics Server to be installed in the cluster
+(kind and k3d include it by default; minikube needs `minikube start
+--metrics-server`).
+
+> The API is stateless, so the HPA is safe. `cloudops-event-processor` is
+> deliberately **not** autoscaled: it holds an in-memory hot store, and multiple
+> replicas would each maintain a partial view. Scaling the worker out requires
+> sharding the poll, which is not implemented — see
+> [event-processing.md](event-processing.md).
+
+---
+
+## 6. Health Checks & Probes
+
+- **Liveness (`/health/live`)** — lightweight process probe returning 200
+  without touching the database, so a transient database issue cannot cause a
+  restart loop.
+- **Readiness (`/health/ready`)** — verifies database connectivity and removes
+  the pod from Service endpoints on failure, without restarting the container.
+- **Diagnostic (`/health`)** — full health summary including dependency state.
+
+---
+
+## 7. Helm Values
+
+`values.yaml` is the canonical configuration; there is no separate local overlay.
+It contains no cloud identity binding, no cloud ingress controller, no cloud block
+storage class, and no managed-service wiring.
+
+Frequently adjusted values:
+
+| Value | Default | Notes |
+|---|---|---|
+| `namespace.name` | `cloudops-dev` | Must exist before install |
+| `api.replicaCount` | `2` | With `api.autoscaling.enabled: true` |
+| `api.autoscaling.enabled` | `true` | Requires Metrics Server |
+| `postgres.storage.storageClass` | `""` | Empty = cluster default |
+| `ingress.enabled` | `false` | Set `className` if enabling |
+| `monitoring.enabled` | `true` | Prometheus + Grafana |
+| `monitoring.grafana.adminPasswordSecret` | `cloudops-grafana-admin` | Generated on install |
+
+---
+
+## 8. Validation & Known Gaps
+
+Validated in CI on every pull request:
+
+- `helm lint` passes.
+- `helm template` renders cleanly with default values.
+- A guard asserts the rendered output contains no cloud-provider dependency.
+
+**Not validated:** there is no Kubernetes cluster in the CI runner, so the chart
+is never actually applied. Live deployment to kind/k3d/minikube must be verified
+manually. Migrations are not run at startup; run `alembic upgrade head` against
+the API pod after installing. Alert notification delivery is also unverified, as
+no Alertmanager is deployed.

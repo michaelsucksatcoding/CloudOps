@@ -40,7 +40,7 @@ def ingest_telemetry_event(
     # 1. Persist to relational database
     saved_event = repo.create(event_in)
 
-    # 2. Forward event to Kinesis / Streaming ingestion layer
+    # 2. Forward the event to the in-process telemetry stream
     try:
         producer.send_event(event_in)
     except Exception:
@@ -76,5 +76,5 @@ def get_hot_telemetry_events(
     limit: int = 50,
     hot_store: HotStorage = Depends(get_hot_storage),
 ) -> list[TelemetryEventCreate]:
-    """Retrieve recent realtime telemetry events from Hot Storage (DynamoDB / Cache)."""
+    """Retrieve recent realtime telemetry events from Hot Storage."""
     return hot_store.get_latest_events(service=service, limit=limit)

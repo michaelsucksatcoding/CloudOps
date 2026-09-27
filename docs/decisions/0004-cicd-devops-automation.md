@@ -1,7 +1,12 @@
 # ADR 0004: CI/CD & DevOps Automation Architecture
 
 ## Status
-Accepted
+Superseded by [ADR 0005](0005-cloud-neutral-architecture.md)
+
+This record is retained as an honest account of the deployment pipeline that
+was originally attempted. Its quality-gate and security-scanning decisions are
+still in force; its AWS OIDC, ECR, and EKS deployment decisions are no longer
+implemented, and the `cd.yml` workflow has been deleted.
 
 ## Context
 Phase 6 of CloudOps AI requires establishing an automated, secure, and reproducible Continuous Integration and Continuous Deployment (CI/CD) pipeline for application code, container packaging, and Kubernetes deployment while strictly adhering to the architectural boundaries defined in `AGENTS.md`.

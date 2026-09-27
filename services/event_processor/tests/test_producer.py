@@ -1,14 +1,10 @@
-"""Unit tests for TelemetryProducer abstractions."""
+"""Unit tests for the TelemetryProducer abstraction."""
 
 from datetime import UTC, datetime
 
-import pytest
-
-from services.api.app.config import settings
 from services.api.app.schemas.telemetry import TelemetryEventCreate
 from services.event_processor.producer import (
     InMemoryProducer,
-    KinesisProducer,
     get_stream_producer,
 )
 
@@ -50,26 +46,8 @@ def test_in_memory_producer_send_batch() -> None:
     assert len(producer.get_events()) == 0
 
 
-def test_kinesis_producer_initialization() -> None:
-    """Verify KinesisProducer properties."""
-    kp = KinesisProducer(stream_name="test-stream", region="us-east-1")
-    assert kp.stream_name == "test-stream"
-    assert kp.region == "us-east-1"
-
-
-def test_get_stream_producer_defaults_to_in_memory() -> None:
-    """Verify the factory returns the in-memory producer by default."""
+def test_get_stream_producer_returns_in_memory() -> None:
+    """Verify the factory returns the shared in-memory producer."""
     producer = get_stream_producer()
     assert isinstance(producer, InMemoryProducer)
-
-
-def test_get_stream_producer_returns_kinesis_when_configured(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Verify the factory returns KinesisProducer when explicitly configured."""
-    monkeypatch.setattr(settings, "telemetry_producer", "kinesis")
-    producer = get_stream_producer()
-    assert isinstance(producer, KinesisProducer)
-
-    monkeypatch.setattr(settings, "telemetry_producer", "in_memory")
-    assert isinstance(get_stream_producer(), InMemoryProducer)
+    assert producer is get_stream_producer()

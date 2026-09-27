@@ -23,58 +23,49 @@ Applications / Simulator
         ▼
    FastAPI / Events
         │
-        ▼
-     Kinesis
+        ├──► PostgreSQL  (durable system of record)
+        │         │
+        │         ▼
+        │   event-processor worker (created_at watermark polling)
+        │         │
+        │         ▼
+        │   TelemetryProcessor
+        │      ├──► Hot storage
+        │      └──► Data lake
+        │              │
+        │              ▼
+        │        Analytics pipeline
+        │              │
+        │              ▼
+        │        ML (anomaly detection, health scoring)
         │
         ▼
-      Lambda
-      /    \
-     ▼      ▼
- DynamoDB   S3
-  hot data  data lake
-              │
-              ▼
-          PySpark / ETL
-              │
-              ▼
-       Analytics Database
-
-Telemetry
-   │
-   ▼
-ML Pipeline
-   ├── anomaly detection
-   ├── service health scoring
-   └── optional incident prediction
-              │
-              ▼
-       FastAPI API
-              │
-              ▼
-       Dashboard / Alerts
-
-GitHub
-   │
-   ▼
-GitHub Actions
-   │
-   ▼
-Docker → ECR → EKS
+    FastAPI API
+        │
+        ▼
+   Dashboard / Alerts
+        │
+        ▼
+Docker Compose (primary) / Helm on generic local Kubernetes (secondary)
+        │
+        ▼
+     GitHub Actions (CI only)
 ```
 
 ### Architecture principles
 
 - Python is the primary implementation language.
 - APIs use FastAPI.
-- Events use an event-driven architecture.
-- Hot/realtime data and historical/cold data are separate.
+- Events flow through PostgreSQL as a durable queue, consumed by watermark.
+- Hot/realtime views and the durable record are separate concerns.
 - ML must operate on measurable telemetry features.
-- Infrastructure must be reproducible with Terraform.
-- Production-like deployment uses Docker + Kubernetes.
-- CI/CD must automatically test and validate code.
-- Every major infrastructure component must have a documented purpose.
+- Deployment is reproducible with Docker Compose and a cloud-neutral Helm chart.
+- CI must automatically test and validate code.
+- Every major component must have a documented purpose.
 
-Do **not** add AWS services merely to make the architecture look impressive.
+Do **not** introduce a cloud provider or managed service merely to make the
+architecture look impressive. See
+[ADR 0005](docs/decisions/0005-cloud-neutral-architecture.md).
 
 ---
 
@@ -89,17 +80,12 @@ Do **not** add AWS services merely to make the architecture look impressive.
 - Alembic
 - PostgreSQL
 - Redis where caching is demonstrably useful
-- boto3
 
 ## Data / Analytics
 
 - Pandas
 - PyArrow
-- PySpark
-- S3
-- DynamoDB
-- Amazon Kinesis
-- SQL
+- Pandas / SQL
 
 ## Machine Learning
 
@@ -111,31 +97,22 @@ Do **not** add AWS services merely to make the architecture look impressive.
 
 ## Infrastructure
 
-- AWS
-- Terraform
 - Docker
-- Kubernetes
-- Amazon EKS
+- Docker Compose (primary runtime)
+- Kubernetes (generic local cluster: kind / k3d / minikube)
 - Helm
-- ECR
-- ALB
 - Kubernetes NetworkPolicy
-- AWS Secrets Manager
 
 ## Events / Operations
 
-- Kinesis
-- Lambda
-- EventBridge
-- SQS
-- SNS
-- CloudWatch
+- PostgreSQL as the durable event queue
+- Background worker with `created_at` watermark polling
+- Redis where caching or a local stream is demonstrably justified
 
 ## Observability
 
 - Prometheus
 - Grafana
-- CloudWatch
 - OpenTelemetry when useful
 
 ## Development / Quality
@@ -202,27 +179,17 @@ cloudops-ai/
 │       └── tests/
 │
 ├── infrastructure/
-│   ├── terraform/
-│   │   ├── modules/
-│   │   │   ├── networking/
-│   │   │   ├── eks/
-│   │   │   ├── rds/
-│   │   │   ├── ecr/
-│   │   │   ├── kinesis/
-│   │   │   ├── lambda/
-│   │   │   └── monitoring/
-│   │   │
-│   │   └── environments/
-│   │       ├── dev/
-│   │       └── prod/
-│   │
 │   └── kubernetes/
 │       ├── namespaces/
 │       ├── deployments/
 │       ├── services/
-│       ├── ingress/
 │       ├── network-policies/
+│       ├── monitoring/
 │       └── helm/
+│           └── cloudops-ai/
+│               ├── Chart.yaml
+│               ├── values.yaml
+│               └── templates/
 │
 ├── data/
 │   ├── raw/
@@ -263,7 +230,7 @@ cloudops-ai/
 
 Keep domain logic in `services/`.  
 Keep deployment/infrastructure code in `infrastructure/`.  
-Do not mix Terraform, Kubernetes manifests, and Python application code.
+Do not mix Kubernetes manifests and Python application code.
 
 ---
 
@@ -518,28 +485,17 @@ python -m services.ml.train
 python -m services.ml.evaluate
 ```
 
-## Terraform
-
-From the appropriate environment directory:
-
-```bash
-terraform fmt -recursive
-terraform init
-terraform validate
-terraform plan
-```
-
-Never run `terraform apply` automatically.
-
 ## Kubernetes
 
 ```bash
 kubectl cluster-info
 kubectl get pods -A
 helm lint infrastructure/kubernetes/helm/cloudops-ai
+helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai
 ```
 
-Deployment must be explicitly requested or performed through the approved CI/CD workflow.
+Deployment is always manual from a local machine. There is no automated delivery
+workflow.
 
 ---
 
@@ -549,7 +505,7 @@ Deployment must be explicitly requested or performed through the approved CI/CD 
 - Use type hints throughout application code.
 - Prefer small, testable functions.
 - Use dependency injection for external services.
-- Keep business logic independent from AWS-specific code where practical.
+- Keep business logic free of cloud-provider-specific code.
 - Use async code only where it provides a real benefit.
 - Validate all external input.
 - Use structured logging.
@@ -576,19 +532,19 @@ Deployment must be explicitly requested or performed through the approved CI/CD 
 7. Prefer the simplest implementation that satisfies the requirement.
 8. Keep ML experiments reproducible with fixed seeds/configuration where appropriate.
 9. Record important architectural decisions in `docs/decisions/`.
-10. Keep cloud resources identifiable and easy to destroy to control FYP costs.
+10. Keep the project runnable from a clean checkout with no cloud account or credentials.
 
 ## MUST NOT
 
 1. Do not introduce a new framework when an existing dependency already solves the problem.
-2. Do not add AWS services without a documented architectural reason.
+2. Do not add cloud-provider or managed services without an explicit project decision.
 3. Do not replace FastAPI with Flask/Django/etc. without an explicit project decision.
 4. Do not introduce microservices merely for architectural appearance.
 5. Do not introduce LLMs, agents, deep learning, or complex MLOps tooling unless explicitly approved.
 6. Do not implement multi-region disaster recovery before the core system works.
-7. Do not hardcode AWS credentials or database passwords.
-8. Do not commit `.env`, secret files, Terraform state, model secrets, or credentials.
-9. Do not execute destructive AWS/Terraform commands automatically.
+7. Do not hardcode credentials, tokens, or database passwords.
+8. Do not commit `.env`, secret files, model secrets, or credentials.
+9. Do not execute destructive infrastructure commands automatically.
 10. Do not make architectural changes unrelated to the current task.
 11. Do not silently modify research methodology or evaluation metrics.
 12. Do not fabricate ML performance results.
@@ -608,16 +564,15 @@ The project has three priority levels.
 - telemetry ingestion
 - event processing
 - PostgreSQL
-- Kinesis/Lambda architecture
-- S3 data lake
+- data lake routing
 - analytics pipeline
 - anomaly detection
 - incident simulator
 - automated tests
 - Docker
-- Terraform
-- Kubernetes/EKS deployment
-- CI/CD
+- Docker Compose runtime
+- Helm chart for generic local Kubernetes
+- CI
 - basic observability
 
 ### P1 — Strong additions
@@ -626,7 +581,7 @@ The project has three priority levels.
 - multi-tenancy
 - Redis caching
 - Prometheus/Grafana
-- SQS/SNS alerting
+- Alertmanager notification delivery
 - deployment-regression detection
 - ML model comparison
 
@@ -639,6 +594,8 @@ The project has three priority levels.
 - sophisticated LLM/AI assistant
 - complex distributed tracing
 - advanced model-serving infrastructure
+- durable local broker (Redis Streams) if measured throughput requires it
+- live Helm deployment verification in CI (requires a cluster)
 
 If P0 functionality is incomplete, **do not work on P2 features.**
 
@@ -651,9 +608,8 @@ Treat all external input as untrusted.
 Required practices:
 
 - environment-based configuration
-- AWS IAM least privilege
+- least-privilege container execution (non-root, capabilities dropped)
 - Kubernetes secrets
-- AWS Secrets Manager for production secrets
 - private database access where appropriate
 - NetworkPolicies for Kubernetes workloads
 - input validation
@@ -698,7 +654,6 @@ Test:
 - API ↔ database
 - event processor ↔ storage
 - analytics pipeline
-- AWS adapters where practical
 
 ### E2E tests
 
@@ -749,25 +704,10 @@ pytest
 security/dependency scan
 ```
 
-After approved merge:
-
-```text
-test
- ↓
-Docker build
- ↓
-image scan
- ↓
-ECR push
- ↓
-deployment
- ↓
-smoke test
-```
-
-Deployment failures must not be silently ignored.
-
-Production deployment must require an explicit approval mechanism.
+Container builds and image scanning run in CI. There is no automated
+post-merge delivery path: `docker compose up --build` or a manual `helm upgrade`
+is performed from a local machine, followed by
+`python scripts/smoke_test.py --base-url http://localhost:8000`.
 
 ---
 
@@ -838,7 +778,7 @@ The agent may:
 
 The agent must ask for confirmation before:
 - changing the primary technology stack
-- adding a major AWS service
+- adding a major cloud service or managed platform
 - changing the ML methodology
 - changing database architecture
 - introducing a new microservice
@@ -846,7 +786,6 @@ The agent must ask for confirmation before:
 - modifying research objectives
 - deleting substantial functionality
 - performing destructive infrastructure operations
-- changing Terraform production resources
 
 When multiple valid implementations exist, prefer the simplest one
 and explain the trade-off before making a major architectural decision.

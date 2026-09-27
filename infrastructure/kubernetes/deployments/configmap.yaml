@@ -10,7 +10,3 @@ metadata:
 data:
   ENVIRONMENT: "dev"
   LOG_LEVEL: "INFO"
-  AWS_REGION: "us-east-1"
-  TELEMETRY_STREAM_NAME: "cloudops-telemetry-stream"
-  S3_DATA_LAKE_BUCKET: "cloudops-telemetry-lake"
-  DYNAMODB_HOT_TABLE: "cloudops-telemetry-hot"

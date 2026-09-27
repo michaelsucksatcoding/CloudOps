@@ -15,14 +15,14 @@
 
 ## Phase 2 — Event Processing
 - [x] Telemetry schema
-- [x] Kinesis producer
-- [x] Lambda processor
-- [x] DynamoDB realtime metrics
+- [x] In-process telemetry producer
+- [x] PostgreSQL-backed event-processing worker
+- [x] Hot storage routing
 
 ## Phase 3 — Analytics
-- [x] S3 data lake
+- [x] Partitioned data-lake records
 - [x] Parquet
-- [x] PySpark pipeline
+- [x] Analytics pipeline
 - [x] Feature engineering
 
 ## Phase 4 — Machine Learning
@@ -33,29 +33,30 @@
 - [x] Health scoring
 
 ## Phase 5 — Kubernetes
-- [x] Docker images
-- [x] ECR
-- [x] EKS
-- [x] Helm
+- [x] Docker images (multi-target: `api`, `ml`, `event-processor`)
+- [x] Helm chart with cloud-neutral default values
 - [x] HPA
 - [x] NetworkPolicy
+- [x] `helm lint` / `helm template` validation in CI
 
 ## Phase 6 — DevOps
 - [x] GitHub Actions
 - [x] Automated tests
 - [x] Image scanning
-- [x] Deployment
+- [x] Container build validation
 
 ## Phase 7 — Observability
 - [x] Prometheus application metrics and in-cluster scraper configuration
 - [x] Grafana provisioned dashboards (system, Kubernetes, ML/incidents)
 - [x] Structured JSON logs, request correlation, and basic Prometheus alerts
-- [x] In-cluster verification: Prometheus scrapes API metrics; 6 alert rules
+- [x] Local Compose verification: Prometheus scrapes API metrics; 7 alert rules
       loaded (inactive during verification); Grafana datasource + 3 dashboards
       provisioned
-- [ ] Provision CloudWatch alarms/dashboards after the AWS resource inventory and
-      approved notification target are available (monitoring runbook documented;
-      out of FYP scope)
+- [x] Removed the cloud architecture (Terraform, managed stream/serverless
+      consumer, object stores, CD workflow) — see
+      [ADR 0005](docs/decisions/0005-cloud-neutral-architecture.md)
+- [ ] Deploy an Alertmanager and verify alert *delivery* (evaluation only is
+      verified; out of FYP scope)
 
 ## Phase 8 — Evaluation
 - [x] Local simulator-ground-truth detection evaluation
@@ -64,4 +65,7 @@
 - [x] Reproducibility: 2026-09-18 run reproduced 2026-09-14 classification
       results exactly
 - [ ] Load testing (future work; not part of FYP evaluation)
-- [ ] Kubernetes resource utilization and HPA scale-out evaluation (future work)
+- [ ] Live Helm deployment to a local cluster (chart is lint/template-validated
+      only; no cluster available in CI)
+- [ ] Durable fan-out if measured throughput becomes a constraint — see
+      [event-processing.md](docs/architecture/event-processing.md)

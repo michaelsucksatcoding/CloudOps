@@ -1,7 +1,11 @@
 # ADR 0003: Kubernetes & Amazon EKS Architecture
 
 ## Status
-Accepted
+Superseded by [ADR 0005](0005-cloud-neutral-architecture.md)
+
+This record is retained as an honest account of the architecture that was
+originally attempted. Its containerization and health-probe decisions are still
+in force; its AWS-specific infrastructure decisions are no longer implemented.
 
 ## Context
 Phase 5 of CloudOps AI requires containerization of services and establishing a production-grade Kubernetes deployment on Amazon EKS while avoiding unnecessary complexity, excessive AWS costs, or brittle infrastructure.

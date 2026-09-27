@@ -25,7 +25,11 @@ class TelemetryEventCreate(BaseModel):
     instance_id: str | None = Field(default=None, max_length=64)
     environment: str | None = Field(default="dev", max_length=32)
     tenant_id: str | None = Field(default=None, max_length=64)
-    region: str | None = Field(default="us-east-1", max_length=32)
+    region: str | None = Field(
+        default=None,
+        max_length=32,
+        description="Optional logical region/zone label (provider-neutral)",
+    )
 
 
 class TelemetryEventResponse(TelemetryEventCreate):

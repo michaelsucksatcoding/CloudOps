@@ -4,74 +4,73 @@ Cloud-Native Intelligent Operations Platform.
 
 CloudOps AI is a Python-first platform for collecting application/infrastructure telemetry, processing it through an event-driven pipeline, detecting anomalous behaviour with machine learning, and exposing service health, analytics, incidents, and recommendations through an API/dashboard.
 
+The platform targets **no cloud provider**. It runs on Docker Compose and, optionally, on any generic local Kubernetes cluster (kind, k3d, minikube).
+
 ## Architecture
 
 ```text
 Applications / Simulator
         │
         ▼
-   FastAPI / Events
+   FastAPI / POST /events
+        │
+        ├──► PostgreSQL  (durable system of record)
+        │         │
+        │         ▼
+        │   event-processor worker  (created_at watermark polling)
+        │         │
+        │         ▼
+        │   TelemetryProcessor
+        │      ├──► Hot storage
+        │      └──► Data lake
+        │              │
+        │              ▼
+        │        Analytics / ETL
+        │              │
+        ▼              ▼
+   API + ML (Isolation Forest)
         │
         ▼
-     Kinesis
-        │
-        ▼
-      Lambda
-      /    \
-     ▼      ▼
- DynamoDB   S3
-  hot data  data lake
-              │
-              ▼
-          PySpark / ETL
-              │
-              ▼
-       Analytics Database
+  Prometheus / Grafana
 ```
 
-## Final-Year Project Status (2026-09-18)
+**Event processing.** The API validates and persists every telemetry event to PostgreSQL before publishing it to a process-local producer. A long-lived worker consumes the durable rows and routes them into hot storage and the data lake. This replaced an earlier managed-stream (queue + serverless consumer) architecture; the capability that was given up is documented openly in
+[docs/architecture/event-processing.md](docs/architecture/event-processing.md) and
+[ADR 0005](docs/decisions/0005-cloud-neutral-architecture.md).
+
+## Project Status
 
 CloudOps AI implements:
 
 - Python/FastAPI application with Pydantic-validated telemetry ingestion
+- PostgreSQL persistence (SQLAlchemy + Alembic)
+- Database-backed event processing worker with hot/data-lake routing
 - ML anomaly detection with Isolation Forest
 - Simulator-based controlled incident evaluation with reproducible results
-- PostgreSQL persistence (SQLAlchemy + Alembic)
-- Event-driven AWS architecture using Kinesis, Lambda, DynamoDB, and S3
-- Kubernetes/EKS deployment with AWS ALB
 - Prometheus/Grafana observability
-- CI/CD, containerization, and Terraform infrastructure-as-code
-- Automated quality gates (pytest, ruff, mypy)
+- Docker Compose as the primary runtime; Helm chart for generic local Kubernetes
+- CI with automated quality gates (pytest, ruff, mypy, pip-audit, Trivy)
 
-### Verified deployment state (dev environment, EKS `cloudops-eks-dev`)
+### Verified local state
 
-- EKS cluster and managed node group deployed; FastAPI API running (2 pods)
-- PostgreSQL running; Alembic migration applied; PostgreSQL PVC bound
-- AWS ALB provisioned with healthy targets; `/health/live` and `/health/ready`
-  return HTTP 200 (readiness confirms database connectivity)
-- Prometheus running and successfully scraping API metrics
-- Grafana running with provisioned Prometheus datasource and 3 dashboards
-- 6 Prometheus alert rules loaded (inactive during verification; no incident
-  was active)
-- EBS CSI addon active
-- Terraform validation/plan and Helm lint/template succeeded
+The full stack was validated end to end on a single machine with no cloud
+account and no credentials:
 
-### Kinesis limitation
-
-The event-driven telemetry architecture was implemented using Amazon Kinesis
-Data Streams, AWS Lambda, Amazon DynamoDB, and Amazon S3. Live end-to-end
-validation of this pipeline could not be performed because the AWS account
-used for the experiment returned a `SubscriptionRequiredException` when
-accessing Kinesis Data Streams. The restriction occurred at the AWS
-account/service-access level before the Kinesis stream could be provisioned.
+- Alembic migration applied; FastAPI API healthy with database connectivity confirmed
+- `POST /events` and `GET /events` persist and return telemetry
+- Event worker confirmed routing persisted events into hot storage and the data lake
+- Prometheus scraping API metrics; Grafana datasource and all three dashboards loaded
+- ML evaluation runs as a one-shot job and reproduces the committed baseline
+- All eight incident scenarios execute
 
 ### Evaluation
 
-The ML evaluation uses synthetic simulator ground truth. The fresh 2026-09-18
-run reproduced the committed baseline's classification results exactly; the
-detector achieves F1 = 0.8719 with a high false-positive rate of 0.88, a
-documented negative result. See [docs/evaluation/](docs/evaluation/) for
-methodology, results, reproducibility, and limitations.
+The ML evaluation uses synthetic simulator ground truth. The committed baseline
+achieves **F1 = 0.8719** with a high false-positive rate of **0.88** — a
+documented negative result indicating training-data distribution mismatch. See
+[docs/evaluation/](docs/evaluation/) for methodology, results, reproducibility,
+and limitations. Local ML runs may report a higher F1 on the evaluation set;
+neither figure should be presented as production validation.
 
 This project is an academic final-year project artifact. It is **not**
 production-ready, and synthetic simulator evaluation must not be described as
@@ -88,11 +87,13 @@ python -m venv .venv
 ```
 
 **Windows PowerShell:**
+
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
 **Linux / macOS:**
+
 ```bash
 source .venv/bin/activate
 ```
@@ -113,6 +114,7 @@ ruff check . && ruff format --check . && mypy services && pytest
 ### 4. Run API Locally
 
 ```bash
+alembic upgrade head
 uvicorn services.api.app.main:app --reload
 ```
 
@@ -124,101 +126,149 @@ python -m services.simulator.telemetry
 
 ---
 
-## Containerization & Docker
+## Containerization & Docker (Primary Runtime)
 
-Build container images locally for each service target:
-
-```bash
-# Build FastAPI API image
-docker build --target api -t cloudops-api:local .
-
-# Build ML Service image
-docker build --target ml -t cloudops-ml:local .
-
-# Build Event Processor worker image
-docker build --target event-processor -t cloudops-event-processor:local .
-```
-
-Run complete local multi-container stack with Docker Compose:
+Run the complete local multi-container stack:
 
 ```bash
 docker compose up --build
 ```
 
----
+This starts six services:
 
-## Kubernetes & Helm Deployment
+| Service | Purpose | Port |
+|---|---|---|
+| `api` | FastAPI (runs Alembic migrations, then serves) | 8000 |
+| `postgres` | PostgreSQL 16 durable system of record | 5432 |
+| `event-processor` | Long-lived telemetry consumer worker | — |
+| `ml` | One-shot train + evaluate job, then exits | — |
+| `prometheus` | Metrics scraping and alerting | 9090 |
+| `grafana` | Dashboards (admin/admin locally) | 3000 |
 
-### 1. Dry-Run Validate Raw Manifests
+Build individual images:
 
 ```bash
-kubectl apply --dry-run=client -f infrastructure/kubernetes/namespaces/
-kubectl apply --dry-run=client -f infrastructure/kubernetes/deployments/
-kubectl apply --dry-run=client -f infrastructure/kubernetes/services/
-kubectl apply --dry-run=client -f infrastructure/kubernetes/ingress/
-kubectl apply --dry-run=client -f infrastructure/kubernetes/network-policies/
+docker build --target api -t cloudops-api:local .
+docker build --target ml -t cloudops-ml:local .
+docker build --target event-processor -t cloudops-event-processor:local .
 ```
 
-### 2. Deploy Using Helm
+Verify the API:
 
 ```bash
-# Lint Helm chart
+curl http://localhost:8000/health
+```
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+---
+
+## Kubernetes & Helm (Secondary, Generic Local Cluster)
+
+The chart targets any generic local Kubernetes cluster. `values.yaml` is the
+canonical configuration and contains no cloud-provider assumptions: no cloud
+identity binding, no cloud ingress controller, no cloud block storage class, and
+no managed-service wiring. All services are `ClusterIP`; ingress is **disabled by
+default**.
+
+### 1. Create a Local Cluster
+
+```bash
+# kind
+kind create cluster --name cloudops
+
+# k3d
+k3d cluster create cloudops
+```
+
+### 2. Build Images into the Cluster
+
+```bash
+for t in api ml event-processor; do
+  docker build --target "$t" -t "cloudops-$t:local" .
+  kind load docker-image "cloudops-$t:local" --name cloudops   # kind
+done
+```
+
+### 3. Create Namespaces
+
+```bash
+kubectl apply -f infrastructure/kubernetes/namespaces/
+```
+
+### 4. Validate the Chart
+
+```bash
 helm lint infrastructure/kubernetes/helm/cloudops-ai
-
-# Render templates locally
 helm template cloudops-ai infrastructure/kubernetes/helm/cloudops-ai
+```
 
-# Install or upgrade on EKS
+### 5. Deploy
+
+```bash
 helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai \
   --namespace cloudops-dev \
   --create-namespace
 ```
 
+### 6. Run Migrations
+
+The API image carries Alembic but does not run migrations at startup:
+
+```bash
+kubectl exec -n cloudops-dev deploy/cloudops-ai-api -- alembic upgrade head
+```
+
+### 7. Access the Services
+
+```bash
+kubectl port-forward -n cloudops-dev svc/cloudops-ai-api 8000:8000
+kubectl port-forward -n cloudops-monitoring svc/cloudops-prometheus 9090:9090
+kubectl port-forward -n cloudops-monitoring svc/cloudops-grafana 3000:3000
+```
+
+### Per-Cluster Overrides
+
+Set the StorageClass if your cluster's default is unsuitable:
+
+```bash
+helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai \
+  --set postgres.storage.storageClass=standard
+```
+
+Enable an Ingress only if your cluster runs a controller (e.g. `nginx` for kind,
+`traefik` for k3d):
+
+```bash
+helm upgrade --install cloudops-ai infrastructure/kubernetes/helm/cloudops-ai \
+  --set ingress.enabled=true --set ingress.className=nginx
+```
+
 ---
 
-## CI/CD & DevOps Automation
+## CI
 
-CloudOps AI uses dual GitHub Actions workflows with zero static AWS credentials (powered by AWS OIDC):
+Continuous integration runs on every pull request and push to `main`
+(`.github/workflows/ci.yml`):
 
-- **Continuous Integration (`.github/workflows/ci.yml`)**: Triggered on pull requests and pushes to `main`. Executes Ruff linter/formatter, Mypy, Pytest with coverage, PyPA `pip-audit` security scan, multi-stage Docker build caching, Trivy container security scans, Helm linting, and Terraform validation.
-- **Continuous Deployment (`.github/workflows/cd.yml`)**: Triggered on push to `main` or manual release dispatch. Authenticates via AWS OIDC, pushes immutable Git SHA-tagged images to Amazon ECR, executes Helm release upgrades to Amazon EKS, verifies pod rollouts, and runs automated HTTP smoke tests.
+- **Python Quality Gates & Security** — Ruff lint/format, Mypy, Pytest with
+  coverage, PyPA `pip-audit`
+- **Helm Chart & Manifest Validation** — `helm lint`, `helm template`, and a
+  guard asserting the rendered output stays cloud-neutral
+- **Local Docker Compose Validation** — `docker compose config`, a guard
+  asserting no cloud SDK is installed, PostgreSQL health, API health, and the
+  ML evaluation job
+- **Container Build & Image Security Scan** — multi-target Docker build with
+  buildx caching and Trivy vulnerability scanning
 
-### Run Local Smoke Tests
-
-```bash
-# Execute against a running local API or forwarded EKS cluster service
-python scripts/smoke_test.py --base-url http://localhost:8000
-```
-
-### Run Dependency Security Audit
-
-```bash
-pip-audit --desc
-```
-
-Refer to [CI/CD Architecture](docs/architecture/cicd.md) and [ADR 0004](docs/decisions/0004-cicd-devops-automation.md) for detailed pipeline specifications.
+CI requires no cloud credentials and no registry account. There is no automated
+deployment workflow: releases are run manually from a local machine.
 
 ---
-
-## Infrastructure Provisioning (Terraform)
-
-```bash
-cd infrastructure/terraform/environments/dev
-
-# Format check
-terraform fmt -check -recursive
-
-# Initialize modules
-terraform init
-
-# Validate configuration
-terraform validate
-
-# Plan infrastructure changes (never auto-apply in production)
-terraform plan
-```
-
-Refer to [AGENTS.md](AGENTS.md) for master architecture documentation and rules of engagement.
 
 ## Observability
 
@@ -226,4 +276,19 @@ The API exposes Prometheus metrics at `GET /metrics` and returns an
 `X-Request-ID` header for log correlation. The Helm chart includes a lightweight
 Prometheus/Grafana stack and provisioned dashboards. See
 [Observability & Monitoring](docs/architecture/observability.md) for metrics,
-alerts, CloudWatch guidance, and local validation instructions.
+alerts, and local validation instructions.
+
+---
+
+## Project Documentation
+
+| Document | Purpose |
+|---|---|
+| [AGENTS.md](AGENTS.md) | Engineering rules, commands, and scope control |
+| [docs/architecture/](docs/architecture/) | Event processing, Kubernetes, observability, CI/CD |
+| [docs/decisions/](docs/decisions/) | Architecture Decision Records (0003 and 0004 superseded by 0005) |
+| [docs/evaluation/](docs/evaluation/) | ML methodology, results, limitations, reproducibility |
+
+## License
+
+MIT

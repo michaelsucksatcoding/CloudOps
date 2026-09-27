@@ -33,9 +33,6 @@ spec:
                 name: {{ include "cloudops-ai.fullname" . }}-config
             - secretRef:
                 name: {{ include "cloudops-ai.fullname" . }}-secret
-          # The image CMD is a Lambda-style one-shot handler; keep the pod
-          # long-running so it can serve metrics and be reachable in-cluster.
-          command: ["/bin/sh", "-c", "while true; do sleep 3600; done"]
           resources:
             {{- toYaml .Values.eventProcessor.resources | nindent 12 }}
           securityContext:
