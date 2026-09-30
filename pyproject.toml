@@ -36,6 +36,9 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
     "pip-audit>=2.7.0",
+    # Transitive via pip-audit -> requests; floor pinned to the highest
+    # advisory fix version so the pip-audit gate is deterministic.
+    "urllib3>=2.7.0",
 ]
 
 [tool.setuptools.packages.find]
