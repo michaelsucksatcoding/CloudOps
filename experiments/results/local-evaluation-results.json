@@ -1,6 +1,6 @@
 {
   "experiment_id": "local-simulator-evaluation-v1",
-  "executed_at": "2026-09-30T14:41:13.742238+00:00",
+  "executed_at": "2026-09-30T15:06:18.779840+00:00",
   "environment": {
     "execution": "local in-process FastAPI and in-memory event storage",
     "python": "3.13.5",
@@ -31,7 +31,7 @@
       "events": 100,
       "detected_anomalies": 88,
       "detection_rate": 0.88,
-      "mean_inference_latency_ms_per_event": 0.1052690000506118
+      "mean_inference_latency_ms_per_event": 0.10196699993684888
     },
     {
       "scenario": "cpu_spike",
@@ -39,7 +39,7 @@
       "events": 100,
       "detected_anomalies": 97,
       "detection_rate": 0.97,
-      "mean_inference_latency_ms_per_event": 0.07684300013352185
+      "mean_inference_latency_ms_per_event": 0.12096999969799072
     },
     {
       "scenario": "memory_pressure",
@@ -47,7 +47,7 @@
       "events": 100,
       "detected_anomalies": 100,
       "detection_rate": 1.0,
-      "mean_inference_latency_ms_per_event": 0.07400800008326769
+      "mean_inference_latency_ms_per_event": 0.09132799983490258
     },
     {
       "scenario": "latency_spike",
@@ -55,7 +55,7 @@
       "events": 100,
       "detected_anomalies": 63,
       "detection_rate": 0.63,
-      "mean_inference_latency_ms_per_event": 0.07692100014537573
+      "mean_inference_latency_ms_per_event": 0.10277300025336444
     },
     {
       "scenario": "error_spike",
@@ -63,7 +63,7 @@
       "events": 100,
       "detected_anomalies": 69,
       "detection_rate": 0.69,
-      "mean_inference_latency_ms_per_event": 0.08017199987079948
+      "mean_inference_latency_ms_per_event": 0.10581400012597442
     },
     {
       "scenario": "database_failure",
@@ -71,7 +71,7 @@
       "events": 100,
       "detected_anomalies": 92,
       "detection_rate": 0.92,
-      "mean_inference_latency_ms_per_event": 0.0737539998954162
+      "mean_inference_latency_ms_per_event": 0.10298300010617822
     },
     {
       "scenario": "queue_backlog",
@@ -79,7 +79,7 @@
       "events": 100,
       "detected_anomalies": 89,
       "detection_rate": 0.89,
-      "mean_inference_latency_ms_per_event": 0.07477000006474555
+      "mean_inference_latency_ms_per_event": 0.10641400003805757
     },
     {
       "scenario": "deployment_regression",
@@ -87,7 +87,7 @@
       "events": 100,
       "detected_anomalies": 99,
       "detection_rate": 0.99,
-      "mean_inference_latency_ms_per_event": 0.07446200004778802
+      "mean_inference_latency_ms_per_event": 0.10118099977262318
     }
   ],
   "ml_metrics": {
@@ -103,35 +103,35 @@
   },
   "pipeline_latency": {
     "samples": 100.0,
-    "mean_ms": 0.5538710026303306,
-    "p50_ms": 0.512500002514571,
-    "p95_ms": 0.8988000336103141,
-    "p99_ms": 1.4887000434100628
+    "mean_ms": 0.5399719980778173,
+    "p50_ms": 0.5383999668993056,
+    "p95_ms": 0.8994999807327986,
+    "p99_ms": 1.1115000233985484
   },
   "api_performance": [
     {
       "requests": 50.0,
-      "throughput_requests_per_second": 233.63590742842945,
+      "throughput_requests_per_second": 215.3957098970275,
       "error_rate": 0.0,
-      "p50_latency_ms": 3.6755999899469316,
-      "p95_latency_ms": 6.661399966105819,
-      "p99_latency_ms": 7.091599982231855
+      "p50_latency_ms": 3.905799996573478,
+      "p95_latency_ms": 8.36830004118383,
+      "p99_latency_ms": 11.594099982175976
     },
     {
       "requests": 200.0,
-      "throughput_requests_per_second": 293.36099139963375,
+      "throughput_requests_per_second": 249.29850516370544,
       "error_rate": 0.0,
-      "p50_latency_ms": 3.2042000093497336,
-      "p95_latency_ms": 4.941600025631487,
-      "p99_latency_ms": 6.632600037846714
+      "p50_latency_ms": 3.6210999824106693,
+      "p95_latency_ms": 4.9915999989025295,
+      "p99_latency_ms": 6.465200043749064
     },
     {
       "requests": 500.0,
-      "throughput_requests_per_second": 281.28979019998593,
+      "throughput_requests_per_second": 273.08496437705645,
       "error_rate": 0.0,
-      "p50_latency_ms": 2.959500008728355,
-      "p95_latency_ms": 6.263899966143072,
-      "p99_latency_ms": 8.029500022530556
+      "p50_latency_ms": 3.3352000173181295,
+      "p95_latency_ms": 5.326199985574931,
+      "p99_latency_ms": 6.898300023749471
     }
   ],
   "observability": {
